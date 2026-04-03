@@ -362,6 +362,10 @@ const defaultAdminProducts: AdminProduct[] = Object.entries(equipmentCatalog).fl
   })),
 )
 
+function isFixedCategoryId(id: string): id is CategoryId {
+  return categoryOrder.includes(id as CategoryId)
+}
+
 const numberFormatter = new Intl.NumberFormat('ja-JP')
 
 function readStoredSubmissions() {
@@ -643,6 +647,9 @@ function App() {
     badge: '',
   })
   const [productImageFile, setProductImageFile] = useState<File | null>(null)
+  const [categoryDraft, setCategoryDraft] = useState<AdminCategoryCard>({
+    ...defaultAdminCategories[0],
+  })
   const dataSourceBadge = getDataSourceBadge(dataSource)
 
   useEffect(() => {
@@ -718,12 +725,25 @@ function App() {
     return { total, average, pending }
   }, [submissions])
 
+  const resolvedCategories = useMemo(() => {
+    return categories.map((category) => {
+      const override = adminCategories.find((item) => item.id === category.id)
+      if (!override) return category
+      return {
+        ...category,
+        label: override.label,
+        description: override.description,
+        heroLabel: override.heroLabel,
+      }
+    })
+  }, [adminCategories])
+
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((submission) => {
       const matchesQuery =
         searchQuery.trim() === '' ||
         submission.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (categories.find((item) => item.id === submission.category)?.label ?? '')
+        (resolvedCategories.find((item) => item.id === submission.category)?.label ?? '')
           .toLowerCase()
           .includes(searchQuery.toLowerCase())
 
@@ -732,7 +752,7 @@ function App() {
 
       return matchesQuery && matchesArea && matchesStatus
     })
-  }, [areaFilter, searchQuery, statusFilter, submissions])
+  }, [areaFilter, resolvedCategories, searchQuery, statusFilter, submissions])
 
   const catalogByCategory = useMemo(() => {
     return categoryOrder.reduce<Record<CategoryId, EquipmentItem[]>>((accumulator, categoryId) => {
@@ -790,6 +810,13 @@ function App() {
       notes: selectedSubmission.notes ?? '',
     })
   }, [selectedSubmission])
+
+  useEffect(() => {
+    if (adminCategories.some((category) => category.id === categoryDraft.id)) return
+    if (adminCategories[0]) {
+      setCategoryDraft(adminCategories[0])
+    }
+  }, [adminCategories, categoryDraft.id])
 
   function updateForm<K extends keyof EstimateForm>(key: K, value: EstimateForm[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -863,7 +890,7 @@ function App() {
     const rows = filteredSubmissions.map((submission) => [
       submission.customerName,
       submission.submittedAt,
-      categories.find((item) => item.id === submission.category)?.label ?? '',
+      resolvedCategories.find((item) => item.id === submission.category)?.label ?? '',
       `${submission.estimatedHigh}`,
       statusLabels[submission.status ?? 'pending'].label,
     ])
@@ -894,22 +921,60 @@ function App() {
     setPricingRows(defaultPricingRows)
     setAdminCategories(defaultAdminCategories)
     setAdminProducts(defaultAdminProducts)
+    setCategoryDraft({ ...defaultAdminCategories[0] })
     persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
 
   function addCategoryCard() {
     const nextIndex = adminCategories.length + 1
-    setAdminCategories((current) => [
-      ...current,
-      {
-        id: `draft-${Date.now()}`,
-        label: `新規カテゴリ ${nextIndex}`,
-        description: '新しい見積もりカテゴリの下書きです。単価や表示文言をこれから設定できます。',
-        heroLabel: `NEW-${nextIndex}`,
-        meta: '下書き',
-      },
-    ])
-    showAdminMessage('新規カテゴリの下書きを追加しました。')
+    const nextDraft = {
+      id: `draft-${Date.now()}`,
+      label: `新規カテゴリ ${nextIndex}`,
+      description: '新しいカテゴリ案の説明を入力してください。',
+      heroLabel: `NEW-${nextIndex}`,
+      meta: '下書き',
+    }
+    setAdminCategories((current) => [...current, nextDraft])
+    setCategoryDraft(nextDraft)
+    showAdminMessage('新規カテゴリの下書きを追加しました。内容を入力して保存できます。')
+  }
+
+  function editCategoryCard(categoryId: string) {
+    const target = adminCategories.find((category) => category.id === categoryId)
+    if (!target) return
+    setCategoryDraft(target)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    showAdminMessage('カテゴリ編集モードに切り替えました。内容を直して保存してください。')
+  }
+
+  function saveCategoryCard() {
+    if (!categoryDraft.label || !categoryDraft.description || !categoryDraft.heroLabel) {
+      showAdminMessage('カテゴリ名、説明文、表示ラベルは入力してください。')
+      return
+    }
+
+    setAdminCategories((current) =>
+      current.map((category) => (category.id === categoryDraft.id ? categoryDraft : category)),
+    )
+    showAdminMessage('カテゴリ設定を更新しました。変更を反映で保存できます。')
+  }
+
+  function removeCategoryCard(categoryId: string) {
+    if (isFixedCategoryId(categoryId)) {
+      showAdminMessage('標準カテゴリは削除できません。名前や説明の編集で調整してください。')
+      return
+    }
+
+    setAdminCategories((current) => current.filter((category) => category.id !== categoryId))
+    if (categoryDraft.id === categoryId) {
+      setCategoryDraft({ ...defaultAdminCategories[0] })
+    }
+    showAdminMessage('カテゴリ下書きを削除しました。')
+  }
+
+  function resetCategoryDraft() {
+    setCategoryDraft({ ...defaultAdminCategories[0] })
+    showAdminMessage('カテゴリ編集内容をリセットしました。')
   }
 
   async function addProductCard() {
@@ -1250,7 +1315,7 @@ function App() {
             </section>
 
             {categoryOrder.map((categoryId, index) => {
-              const category = categories.find((item) => item.id === categoryId) ?? categories[0]
+              const category = resolvedCategories.find((item) => item.id === categoryId) ?? resolvedCategories[0]
               const products = catalogByCategory[categoryId] ?? []
               const selectedProductId = selectedProducts[categoryId]
 
@@ -1268,7 +1333,7 @@ function App() {
                   </div>
 
                   <div className="catalog-grid">
-                    {products.map((product) => (
+                    {products.length > 0 ? products.map((product) => (
                       <button
                         key={product.id}
                         type="button"
@@ -1299,7 +1364,12 @@ function App() {
                           {selectedProductId === product.id ? '選択中' : 'この設備を選ぶ'}
                         </span>
                       </button>
-                    ))}
+                    )) : (
+                      <div className="catalog-empty">
+                        <strong>{category.label}の商品がまだ登録されていません。</strong>
+                        <p>管理画面の商品管理から、このカテゴリの商品を追加してください。</p>
+                      </div>
+                    )}
                   </div>
                 </section>
               )
@@ -1554,7 +1624,7 @@ function App() {
                 <div className="filter-actions">
                   <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value as 'all' | CategoryId)}>
                     <option value="all">すべての箇所</option>
-                    {categories.map((category) => (
+                    {resolvedCategories.map((category) => (
                       <option key={category.id} value={category.id}>{category.label}</option>
                     ))}
                   </select>
@@ -1601,7 +1671,7 @@ function App() {
                         </td>
                         <td>{submission.submittedAt}</td>
                         <td>
-                          <span className="tag">{categories.find((item) => item.id === submission.category)?.label}</span>
+                          <span className="tag">{resolvedCategories.find((item) => item.id === submission.category)?.label}</span>
                         </td>
                         <td className="mono">{formatCurrency(submission.estimatedHigh)}</td>
                         <td>
@@ -1755,9 +1825,55 @@ function App() {
                     <button className="light-button" onClick={addCategoryCard}>カテゴリ追加</button>
                   </div>
                   <div className="category-admin-grid">
+                    <div className="category-form-card">
+                      <div className="panel-head">
+                        <div>
+                          <h3>カテゴリ編集</h3>
+                          <p>見積もり画面に出るカテゴリ名や説明文を編集できます。</p>
+                        </div>
+                      </div>
+                      <div className="controls-grid controls-grid-wide category-form-grid">
+                        <label className="field">
+                          <span>編集対象</span>
+                          <select value={categoryDraft.id} onChange={(event) => editCategoryCard(event.target.value)}>
+                            {adminCategories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>表示ラベル</span>
+                          <input value={categoryDraft.heroLabel} onChange={(event) => setCategoryDraft((current) => ({ ...current, heroLabel: event.target.value }))} />
+                        </label>
+                        <label className="field">
+                          <span>カテゴリ名</span>
+                          <input value={categoryDraft.label} onChange={(event) => setCategoryDraft((current) => ({ ...current, label: event.target.value }))} />
+                        </label>
+                        <label className="field">
+                          <span>補足メタ</span>
+                          <input value={categoryDraft.meta} onChange={(event) => setCategoryDraft((current) => ({ ...current, meta: event.target.value }))} />
+                        </label>
+                        <label className="field field-wide">
+                          <span>説明文</span>
+                          <textarea rows={3} value={categoryDraft.description} onChange={(event) => setCategoryDraft((current) => ({ ...current, description: event.target.value }))} />
+                        </label>
+                      </div>
+                      <div className="submit-row config-inline-actions">
+                        <button className="nav-button primary" onClick={saveCategoryCard}>カテゴリを更新</button>
+                        <button className="light-button" onClick={resetCategoryDraft}>入力をリセット</button>
+                      </div>
+                    </div>
                     {adminCategories.map((category) => (
-                      <div key={category.id} className="category-admin-card">
-                        <div className="category-admin-icon">{category.heroLabel}</div>
+                      <div key={category.id} className={`category-admin-card ${isFixedCategoryId(category.id) ? '' : 'is-draft'}`}>
+                        <div className="category-admin-header">
+                          <div className="category-admin-icon">{category.heroLabel}</div>
+                          <div className="category-admin-actions">
+                            <button className="light-button" onClick={() => editCategoryCard(category.id)}>編集</button>
+                            <button className="light-button" onClick={() => removeCategoryCard(category.id)}>削除</button>
+                          </div>
+                        </div>
                         <h4>{category.label}</h4>
                         <p>{category.description}</p>
                         <div className="category-admin-meta">{category.meta}</div>
@@ -1798,7 +1914,7 @@ function App() {
                     <label className="field">
                       <span>カテゴリ</span>
                       <select value={productDraft.categoryId} onChange={(event) => setProductDraft((current) => ({ ...current, categoryId: event.target.value as CategoryId }))}>
-                        {categories.map((category) => (
+                        {resolvedCategories.map((category) => (
                           <option key={category.id} value={category.id}>{category.label}</option>
                         ))}
                       </select>
@@ -1849,7 +1965,7 @@ function App() {
                       <div key={product.id} className="product-admin-row">
                         <div className="product-admin-main">
                           {product.imageUrl ? <img className="product-admin-thumb" src={product.imageUrl} alt={product.name} /> : <div className="product-admin-thumb placeholder">NO IMAGE</div>}
-                          <strong>{categories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
+                          <strong>{resolvedCategories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
                           <p>{product.subtitle}</p>
                         </div>
                         <div className="product-admin-meta">
@@ -1905,7 +2021,7 @@ function App() {
               <h3>{selectedSubmission.customerName}</h3>
               <div className="detail-grid">
                 <div><span>受付日</span><strong>{selectedSubmission.submittedAt}</strong></div>
-                <div><span>依頼箇所</span><strong>{categories.find((item) => item.id === selectedSubmission.category)?.label}</strong></div>
+                <div><span>依頼箇所</span><strong>{resolvedCategories.find((item) => item.id === selectedSubmission.category)?.label}</strong></div>
                 <div><span>見積もり下限</span><strong>{formatCurrency(selectedSubmission.estimatedLow)}</strong></div>
                 <div><span>見積もり上限</span><strong>{formatCurrency(selectedSubmission.estimatedHigh)}</strong></div>
                 <div>
