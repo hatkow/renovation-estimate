@@ -617,6 +617,14 @@ function App() {
     setAdminSection(section)
   }
 
+  function openConfigCreator() {
+    setMainView('admin')
+    setAdminSection('config')
+    setConfigSavedMessage('新規設定の追加画面を開きました。カテゴリ追加または単価設定から編集を始めてください。')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.setTimeout(() => setConfigSavedMessage(''), 3000)
+  }
+
   function updatePricingRow(index: number, key: keyof Omit<PricingRow, 'label'>, rawValue: string) {
     setPricingRows((current) =>
       current.map((row, rowIndex) =>
@@ -1057,7 +1065,7 @@ function App() {
           <button onClick={() => setMainView('simulator')}>見積もり画面へ戻る</button>
         </nav>
         <div className="sidebar-footer">
-          <button className="sidebar-cta">新規設定を追加</button>
+          <button className="sidebar-cta" onClick={openConfigCreator}>新規設定を追加</button>
           <div className="sidebar-links">
             <button>サポート</button>
             <button>ログアウト</button>
