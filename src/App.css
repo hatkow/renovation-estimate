@@ -1058,6 +1058,11 @@
   background: #ecfdf5;
 }
 
+.status-slate {
+  color: #475569;
+  background: #f1f5f9;
+}
+
 .align-right {
   text-align: right;
 }

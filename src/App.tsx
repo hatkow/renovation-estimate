@@ -9,7 +9,7 @@ type Timing = 'asap' | 'within3Months' | 'within6Months' | 'undecided'
 type DataSource = 'supabase' | 'api' | 'local'
 type MainView = 'simulator' | 'admin'
 type AdminSection = 'dashboard' | 'analytics' | 'requests' | 'config'
-type Status = 'pending' | 'contacted' | 'completed'
+type Status = 'pending' | 'contacted' | 'completed' | 'lost'
 
 type SelectedProductSummary = {
   categoryId: CategoryId
@@ -48,6 +48,7 @@ type EstimateForm = {
   utmCampaign?: string
   landingPage?: string
   referrerHost?: string
+  lostReason?: string
 }
 
 type SubmissionRecord = EstimateForm & {
@@ -125,6 +126,7 @@ type SupabaseSubmissionRow = {
   utm_campaign: string | null
   landing_page: string | null
   referrer_host: string | null
+  lost_reason: string | null
   estimated_low: number
   estimated_high: number
   submitted_at: string
@@ -263,6 +265,7 @@ const statusLabels: Record<Status, { label: string; tone: string }> = {
   pending: { label: '未対応', tone: 'status-amber' },
   contacted: { label: '連絡済み', tone: 'status-blue' },
   completed: { label: '完了', tone: 'status-green' },
+  lost: { label: '失注', tone: 'status-slate' },
 }
 
 const initialForm: EstimateForm = {
@@ -307,6 +310,7 @@ const demoSubmissions: SubmissionRecord[] = [
     utmCampaign: 'kitchen_lp',
     landingPage: '/?utm_source=google&utm_medium=cpc&utm_campaign=kitchen_lp',
     referrerHost: 'www.google.com',
+    lostReason: '',
     estimatedLow: 1680000,
     estimatedHigh: 3280000,
     submittedAt: '2024/10/24',
@@ -337,6 +341,7 @@ const demoSubmissions: SubmissionRecord[] = [
     utmCampaign: 'bath_reel',
     landingPage: '/?utm_source=instagram&utm_medium=social&utm_campaign=bath_reel',
     referrerHost: 'www.instagram.com',
+    lostReason: '',
     estimatedLow: 1980000,
     estimatedHigh: 3760000,
     submittedAt: '2024/10/22',
@@ -366,6 +371,7 @@ const demoSubmissions: SubmissionRecord[] = [
     utmCampaign: 'owner_follow',
     landingPage: '/?utm_source=line&utm_medium=message&utm_campaign=owner_follow',
     referrerHost: 'line.me',
+    lostReason: '',
     estimatedLow: 1280000,
     estimatedHigh: 2420000,
     submittedAt: '2024/10/19',
@@ -395,10 +401,11 @@ const demoSubmissions: SubmissionRecord[] = [
     utmCampaign: '',
     landingPage: '/',
     referrerHost: '',
+    lostReason: '予算オーバー',
     estimatedLow: 310000,
     estimatedHigh: 690000,
     submittedAt: '2024/10/18',
-    status: 'pending',
+    status: 'lost',
   },
 ]
 
@@ -548,6 +555,7 @@ function mapSupabaseRow(row: SupabaseSubmissionRow): SubmissionRecord {
     utmCampaign: row.utm_campaign ?? '',
     landingPage: row.landing_page ?? '',
     referrerHost: row.referrer_host ?? '',
+    lostReason: row.lost_reason ?? '',
     estimatedLow: row.estimated_low,
     estimatedHigh: row.estimated_high,
     submittedAt: new Date(row.submitted_at).toLocaleString('ja-JP'),
@@ -578,6 +586,7 @@ function mapPayloadToSupabase(payload: SubmissionPayload, uploadedImages: string
     utm_campaign: payload.utmCampaign ?? '',
     landing_page: payload.landingPage ?? '',
     referrer_host: payload.referrerHost ?? '',
+    lost_reason: payload.lostReason ?? '',
     estimated_low: payload.estimatedLow,
     estimated_high: payload.estimatedHigh,
     status: payload.status ?? 'pending',
@@ -670,6 +679,7 @@ async function updateSubmissionInSupabase(record: SubmissionRecord) {
     .update({
       status: record.status ?? 'pending',
       notes: record.notes,
+      lost_reason: record.lostReason ?? '',
     })
     .eq('id', record.id)
     .select('*')
@@ -750,9 +760,10 @@ function App() {
   const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(defaultAdminCategories)
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>(defaultAdminProducts)
   const [requestPage, setRequestPage] = useState(1)
-  const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string }>({
+  const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string; lostReason: string }>({
     status: 'pending',
     notes: '',
+    lostReason: '',
   })
   const [productDraft, setProductDraft] = useState<AdminProduct>({
     id: '',
@@ -913,6 +924,8 @@ function App() {
     const prefectureCounts = new Map<string, number>()
     const sourceCounts = new Map<string, number>()
     const campaignCounts = new Map<string, number>()
+    const lossReasonCounts = new Map<string, number>()
+    const sourcePerformance = new Map<string, { total: number; completed: number; lost: number }>()
     const segmentCounts = {
       hot: 0,
       warm: 0,
@@ -925,9 +938,18 @@ function App() {
     for (const submission of safeSubmissions) {
       categoryCounts.set(submission.category, (categoryCounts.get(submission.category) ?? 0) + 1)
       prefectureCounts.set(submission.prefecture, (prefectureCounts.get(submission.prefecture) ?? 0) + 1)
-      sourceCounts.set(submission.leadSource ?? 'direct', (sourceCounts.get(submission.leadSource ?? 'direct') ?? 0) + 1)
+      const leadSource = submission.leadSource ?? 'direct'
+      sourceCounts.set(leadSource, (sourceCounts.get(leadSource) ?? 0) + 1)
+      const performance = sourcePerformance.get(leadSource) ?? { total: 0, completed: 0, lost: 0 }
+      performance.total += 1
+      if (submission.status === 'completed') performance.completed += 1
+      if (submission.status === 'lost') performance.lost += 1
+      sourcePerformance.set(leadSource, performance)
       if (submission.utmCampaign) {
         campaignCounts.set(submission.utmCampaign, (campaignCounts.get(submission.utmCampaign) ?? 0) + 1)
+      }
+      if (submission.status === 'lost' && submission.lostReason) {
+        lossReasonCounts.set(submission.lostReason, (lossReasonCounts.get(submission.lostReason) ?? 0) + 1)
       }
       if (submission.grade !== 'standard') premiumCount += 1
       if (submission.timing === 'asap' || submission.timing === 'within3Months') urgentCount += 1
@@ -1004,6 +1026,26 @@ function App() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
 
+    const sourceCvRanking = [...sourcePerformance.entries()]
+      .map(([label, value]) => ({
+        label,
+        total: value.total,
+        completed: value.completed,
+        lost: value.lost,
+        conversionRate: value.total === 0 ? 0 : Math.round((value.completed / value.total) * 100),
+      }))
+      .sort((a, b) => b.conversionRate - a.conversionRate || b.completed - a.completed)
+      .slice(0, 5)
+
+    const topLossReasons = [...lossReasonCounts.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        rate: Math.round((count / Math.max(1, segmentCounts.hot + segmentCounts.warm + segmentCounts.nurture)) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
     const topPrefectures = [...prefectureCounts.entries()]
       .map(([label, count]) => ({
         label,
@@ -1054,6 +1096,8 @@ function App() {
       topProducts,
       topSources,
       topCampaigns,
+      sourceCvRanking,
+      topLossReasons,
       topPrefectures,
       topOptions,
       premiumRate,
@@ -1086,6 +1130,7 @@ function App() {
     setDetailDraft({
       status: selectedSubmission.status ?? 'pending',
       notes: selectedSubmission.notes ?? '',
+      lostReason: selectedSubmission.lostReason ?? '',
     })
   }, [selectedSubmission])
 
@@ -1417,6 +1462,12 @@ function App() {
       'キャンペーン',
       ...marketingInsights.topCampaigns.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
       '',
+      '媒体別CVランキング',
+      ...marketingInsights.sourceCvRanking.map((item) => `- ${item.label}: CV ${item.conversionRate}% / 成約 ${item.completed}件 / 失注 ${item.lost}件`),
+      '',
+      '失注理由',
+      ...marketingInsights.topLossReasons.map((item) => `- ${item.label}: ${item.count}件`),
+      '',
       '人気オプション',
       ...marketingInsights.topOptions.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
       '',
@@ -1443,6 +1494,7 @@ function App() {
       ...selectedSubmission,
       status: detailDraft.status,
       notes: detailDraft.notes,
+      lostReason: detailDraft.status === 'lost' ? detailDraft.lostReason : '',
     }
 
     try {
@@ -1966,6 +2018,7 @@ function App() {
                     <option value="pending">未対応</option>
                     <option value="contacted">連絡済み</option>
                     <option value="completed">完了</option>
+                    <option value="lost">失注</option>
                   </select>
                   <button
                     className="filter-button"
@@ -2313,6 +2366,41 @@ function App() {
 
               <div className="analytics-card">
                 <div className="panel-head">
+                  <h3>媒体別CVと失注理由</h3>
+                </div>
+                <div className="analytics-split">
+                  <div>
+                    <h4>媒体別CVランキング</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.sourceCvRanking.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>CV {item.conversionRate}% / 成約 {item.completed}件</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>失注理由</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topLossReasons.length > 0 ? marketingInsights.topLossReasons.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件</strong>
+                        </li>
+                      )) : (
+                        <li>
+                          <span>失注データなし</span>
+                          <strong>失注案件に理由を入れると、ここに集計されます</strong>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="analytics-card">
+                <div className="panel-head">
                   <h3>地域と検討温度</h3>
                 </div>
                 <div className="analytics-split">
@@ -2594,6 +2682,7 @@ function App() {
                     <option value="pending">未対応</option>
                     <option value="contacted">連絡済み</option>
                     <option value="completed">完了</option>
+                    <option value="lost">失注</option>
                   </select>
                 </div>
                 <div><span>希望時期</span><strong>{timingLabels[selectedSubmission.timing]}</strong></div>
@@ -2621,6 +2710,15 @@ function App() {
                 <div>
                   <span>キャンペーン</span>
                   <strong>{selectedSubmission.utmCampaign || '未設定'}</strong>
+                </div>
+                <div className="detail-wide">
+                  <span>失注理由</span>
+                  <input
+                    value={detailDraft.lostReason}
+                    onChange={(event) => setDetailDraft((current) => ({ ...current, lostReason: event.target.value }))}
+                    placeholder="予算オーバー / 他社決定 / 時期未定 など"
+                    disabled={detailDraft.status !== 'lost'}
+                  />
                 </div>
                 <div className="detail-wide">
                   <span>画像</span>

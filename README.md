@@ -111,6 +111,7 @@ https://renovation-estimate.vercel.app/?utm_source=google&utm_medium=cpc&utm_cam
 - `utm_campaign`
 - `landing_page`
 - `referrer_host`
+- `lost_reason`
 
 ## デプロイ
 

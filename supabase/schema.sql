@@ -23,6 +23,7 @@ create table if not exists public.estimate_submissions (
   utm_campaign text not null default '',
   landing_page text not null default '',
   referrer_host text not null default '',
+  lost_reason text not null default '',
   estimated_low bigint not null default 0,
   estimated_high bigint not null default 0,
   submitted_at timestamptz not null default timezone('utc', now()),
@@ -49,6 +50,9 @@ add column if not exists landing_page text not null default '';
 
 alter table public.estimate_submissions
 add column if not exists referrer_host text not null default '';
+
+alter table public.estimate_submissions
+add column if not exists lost_reason text not null default '';
 
 create table if not exists public.simulator_configs (
   config_key text primary key,
