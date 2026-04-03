@@ -8,7 +8,7 @@ type Grade = 'standard' | 'premium' | 'luxury'
 type Timing = 'asap' | 'within3Months' | 'within6Months' | 'undecided'
 type DataSource = 'supabase' | 'api' | 'local'
 type MainView = 'simulator' | 'admin'
-type AdminSection = 'dashboard' | 'analytics' | 'requests' | 'config'
+type AdminSection = 'dashboard' | 'analytics' | 'report' | 'requests' | 'config'
 type Status = 'pending' | 'contacted' | 'completed' | 'lost'
 
 type SelectedProductSummary = {
@@ -1960,6 +1960,9 @@ function App() {
           <button className={adminSection === 'analytics' ? 'active' : ''} onClick={() => setAdminSection('analytics')}>
             分析ページ
           </button>
+          <button className={adminSection === 'report' ? 'active' : ''} onClick={() => setAdminSection('report')}>
+            分析レポート
+          </button>
           <button className={adminSection === 'requests' ? 'active' : ''} onClick={() => setAdminSection('requests')}>
             見積もり依頼一覧
           </button>
@@ -2266,6 +2269,7 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <span className={`header-status ${dataSourceBadge.tone}`}>{dataSourceBadge.label}</span>
+                <button className="light-button" onClick={() => setAdminSection('report')}>プレビューを見る</button>
                 <button className="light-button" onClick={downloadMarketingReport}>分析レポート</button>
               </div>
             </header>
@@ -2449,6 +2453,157 @@ function App() {
                       <p>{item}</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
+        {adminSection === 'report' ? (
+          <>
+            <header className="admin-header">
+              <div>
+                <h2>分析レポートプレビュー</h2>
+                <p>ダウンロード前に、営業会議や提案用にそのまま見せられるレポート画面です。</p>
+              </div>
+              <div className="admin-header-actions">
+                <button className="light-button" onClick={() => setAdminSection('analytics')}>分析ページへ戻る</button>
+                <button className="nav-button primary" onClick={downloadMarketingReport}>この内容を出力</button>
+              </div>
+            </header>
+            <section className="report-preview">
+              <div className="report-sheet">
+                <div className="report-cover">
+                  <div>
+                    <span className="kicker">Marketing Report</span>
+                    <h3>リフォーム見積もり分析レポート</h3>
+                    <p>送信された見積もりデータから、集客改善と営業改善につながる示唆を整理しています。</p>
+                  </div>
+                  <div className="report-cover-metrics">
+                    <div>
+                      <span>分析件数</span>
+                      <strong>{marketingInsights.total}件</strong>
+                    </div>
+                    <div>
+                      <span>プレミアム志向</span>
+                      <strong>{marketingInsights.premiumRate}%</strong>
+                    </div>
+                    <div>
+                      <span>早期検討率</span>
+                      <strong>{marketingInsights.urgentRate}%</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="report-block-grid">
+                  <section className="report-block">
+                    <h4>主要サマリー</h4>
+                    <div className="report-stat-grid">
+                      <div className="report-stat">
+                        <span>提案型ニーズ</span>
+                        <strong>{marketingInsights.designRate}%</strong>
+                      </div>
+                      <div className="report-stat">
+                        <span>高温リード</span>
+                        <strong>{marketingInsights.segmentCounts.hot}件</strong>
+                      </div>
+                      <div className="report-stat">
+                        <span>育成対象</span>
+                        <strong>{marketingInsights.segmentCounts.nurture}件</strong>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="report-block">
+                    <h4>人気カテゴリ</h4>
+                    <ul className="report-list">
+                      {marketingInsights.topCategories.map((item) => (
+                        <li key={item.id}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="report-block">
+                    <h4>人気商品</h4>
+                    <ul className="report-list">
+                      {marketingInsights.topProducts.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="report-block">
+                    <h4>流入元・キャンペーン</h4>
+                    <div className="report-columns">
+                      <ul className="report-list">
+                        {marketingInsights.topSources.map((item) => (
+                          <li key={item.label}>
+                            <span>{item.label}</span>
+                            <strong>{item.count}件 / {item.rate}%</strong>
+                          </li>
+                        ))}
+                      </ul>
+                      <ul className="report-list">
+                        {marketingInsights.topCampaigns.length > 0 ? marketingInsights.topCampaigns.map((item) => (
+                          <li key={item.label}>
+                            <span>{item.label}</span>
+                            <strong>{item.count}件 / {item.rate}%</strong>
+                          </li>
+                        )) : (
+                          <li>
+                            <span>UTM未設定</span>
+                            <strong>キャンペーンURL設定待ち</strong>
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  </section>
+
+                  <section className="report-block">
+                    <h4>媒体別CVランキング</h4>
+                    <ul className="report-list">
+                      {marketingInsights.sourceCvRanking.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>CV {item.conversionRate}% / 成約 {item.completed}件</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="report-block">
+                    <h4>失注理由</h4>
+                    <ul className="report-list">
+                      {marketingInsights.topLossReasons.length > 0 ? marketingInsights.topLossReasons.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件</strong>
+                        </li>
+                      )) : (
+                        <li>
+                          <span>失注理由なし</span>
+                          <strong>データ蓄積中</strong>
+                        </li>
+                      )}
+                    </ul>
+                  </section>
+
+                  <section className="report-block full">
+                    <h4>推奨アクション</h4>
+                    <div className="report-actions">
+                      {marketingInsights.recommendations.map((item, index) => (
+                        <div key={item} className="report-action-item">
+                          <span>{String(index + 1).padStart(2, '0')}</span>
+                          <p>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 </div>
               </div>
             </section>
