@@ -75,6 +75,7 @@ type AdminCategoryCard = {
 }
 
 const STORAGE_KEY = 'renovation-estimate-submissions'
+const CONFIG_STORAGE_KEY = 'renovation-estimate-config'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 type SubmissionPayload = Omit<SubmissionRecord, 'id' | 'submittedAt'>
@@ -99,6 +100,17 @@ type SupabaseSubmissionRow = {
   estimated_high: number
   submitted_at: string
   status: Status | null
+}
+
+type SimulatorConfigPayload = {
+  pricingRows: PricingRow[]
+  adminCategories: AdminCategoryCard[]
+}
+
+type SupabaseConfigRow = {
+  config_key: string
+  config_value: SimulatorConfigPayload
+  updated_at: string
 }
 
 const categories: CategoryConfig[] = [
@@ -322,6 +334,20 @@ const demoSubmissions: SubmissionRecord[] = [
   },
 ]
 
+const defaultPricingRows: PricingRow[] = [
+  { label: 'カウンター天板（平方フィート）', standard: 45, premium: 85, artisan: 145 },
+  { label: 'フローリング（平方フィート）', standard: 12.5, premium: 18, artisan: 32 },
+  { label: '造作収納（1フィート）', standard: 220, premium: 380, artisan: 650 },
+]
+
+const defaultAdminCategories: AdminCategoryCard[] = categories.map((category) => ({
+  id: category.id,
+  label: category.label,
+  description: category.description,
+  heroLabel: category.heroLabel,
+  meta: '8件の設定が有効',
+}))
+
 const numberFormatter = new Intl.NumberFormat('ja-JP')
 
 function readStoredSubmissions() {
@@ -337,6 +363,21 @@ function readStoredSubmissions() {
 
 function writeStoredSubmissions(records: SubmissionRecord[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+}
+
+function readStoredConfig(): SimulatorConfigPayload | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(CONFIG_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as SimulatorConfigPayload
+  } catch {
+    return null
+  }
+}
+
+function writeStoredConfig(config: SimulatorConfigPayload) {
+  window.localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config))
 }
 
 function formatCurrency(value: number) {
@@ -501,6 +542,35 @@ async function updateSubmissionInSupabase(record: SubmissionRecord) {
   return mapSupabaseRow(data as SupabaseSubmissionRow)
 }
 
+async function fetchSimulatorConfigFromSupabase() {
+  if (!supabase || !isSupabaseConfigured) throw new Error('supabase is not configured')
+
+  const { data, error } = await supabase
+    .from('simulator_configs')
+    .select('*')
+    .eq('config_key', 'default')
+    .maybeSingle()
+
+  if (error) throw error
+  return data as SupabaseConfigRow | null
+}
+
+async function saveSimulatorConfigToSupabase(config: SimulatorConfigPayload) {
+  if (!supabase || !isSupabaseConfigured) throw new Error('supabase is not configured')
+
+  const { error } = await supabase
+    .from('simulator_configs')
+    .upsert(
+      {
+        config_key: 'default',
+        config_value: config,
+      },
+      { onConflict: 'config_key' },
+    )
+
+  if (error) throw error
+}
+
 function App() {
   const [mainView, setMainView] = useState<MainView>('simulator')
   const [adminSection, setAdminSection] = useState<AdminSection>('requests')
@@ -516,11 +586,7 @@ function App() {
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionRecord | null>(null)
   const [chartRange, setChartRange] = useState<'daily' | 'weekly'>('daily')
   const [configSavedMessage, setConfigSavedMessage] = useState('')
-  const [pricingRows, setPricingRows] = useState<PricingRow[]>([
-    { label: 'カウンター天板（平方フィート）', standard: 45, premium: 85, artisan: 145 },
-    { label: 'フローリング（平方フィート）', standard: 12.5, premium: 18, artisan: 32 },
-    { label: '造作収納（1フィート）', standard: 220, premium: 380, artisan: 650 },
-  ])
+  const [pricingRows, setPricingRows] = useState<PricingRow[]>(defaultPricingRows)
   const [selectedProducts, setSelectedProducts] = useState<Record<CategoryId, string>>({
     kitchen: 'kitchen-lixil-ale',
     bath: 'bath-lixil-arise',
@@ -528,15 +594,7 @@ function App() {
     toilet: 'toilet-lixil-ameju',
     interior: '',
   })
-  const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(
-    categories.map((category) => ({
-      id: category.id,
-      label: category.label,
-      description: category.description,
-      heroLabel: category.heroLabel,
-      meta: '8件の設定が有効',
-    })),
-  )
+  const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(defaultAdminCategories)
   const [requestPage, setRequestPage] = useState(1)
   const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string }>({
     status: 'pending',
@@ -568,6 +626,40 @@ function App() {
       }
     }
     void loadSubmissions()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadConfig() {
+      try {
+        if (isSupabaseConfigured) {
+          const row = await fetchSimulatorConfigFromSupabase()
+          if (!isMounted || !row?.config_value) return
+          setPricingRows(row.config_value.pricingRows ?? defaultPricingRows)
+          setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
+          writeStoredConfig({
+            pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
+            adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
+          })
+          return
+        }
+      } catch {
+        // Fall back to local config when the Supabase config table is not ready.
+      }
+
+      if (!isMounted) return
+      const storedConfig = readStoredConfig()
+      if (storedConfig) {
+        setPricingRows(storedConfig.pricingRows ?? defaultPricingRows)
+        setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
+      }
+    }
+
+    void loadConfig()
     return () => {
       isMounted = false
     }
@@ -731,16 +823,20 @@ function App() {
   }
 
   function saveConfig() {
-    showAdminMessage('設定内容を反映しました。')
+    persistSimulatorConfig({
+      pricingRows,
+      adminCategories,
+    })
   }
 
   function resetConfig() {
-    setPricingRows([
-      { label: 'カウンター天板（平方フィート）', standard: 45, premium: 85, artisan: 145 },
-      { label: 'フローリング（平方フィート）', standard: 12.5, premium: 18, artisan: 32 },
-      { label: '造作収納（1フィート）', standard: 220, premium: 380, artisan: 650 },
-    ])
-    showAdminMessage('初期値に戻しました。')
+    const payload = {
+      pricingRows: defaultPricingRows,
+      adminCategories: defaultAdminCategories,
+    }
+    setPricingRows(defaultPricingRows)
+    setAdminCategories(defaultAdminCategories)
+    persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
 
   function addCategoryCard() {
@@ -756,6 +852,25 @@ function App() {
       },
     ])
     showAdminMessage('新規カテゴリの下書きを追加しました。')
+  }
+
+  function persistSimulatorConfig(payload: SimulatorConfigPayload, successMessage = '設定内容を反映しました。') {
+    writeStoredConfig(payload)
+
+    void (async () => {
+      try {
+        if (isSupabaseConfigured) {
+          await saveSimulatorConfigToSupabase(payload)
+          showAdminMessage(successMessage.replace('反映しました。', 'Supabaseへ保存しました。'))
+          return
+        }
+      } catch {
+        showAdminMessage('Supabase保存に失敗したため、ブラウザに保存しました。追加SQLを実行すると共有保存できます。')
+        return
+      }
+
+      showAdminMessage(successMessage.replace('反映しました。', 'ブラウザに保存しました。'))
+    })()
   }
 
   function downloadEstimateSummary() {

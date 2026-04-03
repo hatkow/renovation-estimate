@@ -73,7 +73,7 @@ VITE_SUPABASE_BUCKET=estimate-images
 
 雛形は [.env.example](C:\codex\renovation-estimate\.env.example) にあります。
 
-Supabase のテーブル・Storage・Policy 作成SQLは [supabase/schema.sql](C:\codex\renovation-estimate\supabase\schema.sql) を使ってください。
+Supabase のテーブル・Storage・Policy 作成SQLは [supabase/schema.sql](C:\codex\renovation-estimate\supabase\schema.sql) を使ってください。設定保存テーブルも含むため、更新後は再実行して問題ありません。
 
 保存先:
 

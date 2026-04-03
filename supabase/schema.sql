@@ -22,7 +22,14 @@ create table if not exists public.estimate_submissions (
   status text not null default 'pending'
 );
 
+create table if not exists public.simulator_configs (
+  config_key text primary key,
+  config_value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.estimate_submissions enable row level security;
+alter table public.simulator_configs enable row level security;
 
 create policy "anon can read estimate submissions"
 on public.estimate_submissions
@@ -34,6 +41,25 @@ create policy "anon can insert estimate submissions"
 on public.estimate_submissions
 for insert
 to anon
+with check (true);
+
+create policy "anon can read simulator configs"
+on public.simulator_configs
+for select
+to anon
+using (true);
+
+create policy "anon can insert simulator configs"
+on public.simulator_configs
+for insert
+to anon
+with check (true);
+
+create policy "anon can update simulator configs"
+on public.simulator_configs
+for update
+to anon
+using (true)
 with check (true);
 
 insert into storage.buckets (id, name, public)
