@@ -97,6 +97,21 @@ https://renovation-estimate.vercel.app/?embed=1
 
 `?embed=1` を付けると、ヘッダーや管理サイドバーを省いた軽量表示になります。
 
+広告やSNSの分析をしたい場合は、URL に UTM を付けて流入元を保存できます。
+
+```text
+https://renovation-estimate.vercel.app/?utm_source=google&utm_medium=cpc&utm_campaign=kitchen_lp
+```
+
+保存される主な項目:
+
+- `lead_source`
+- `utm_source`
+- `utm_medium`
+- `utm_campaign`
+- `landing_page`
+- `referrer_host`
+
 ## デプロイ
 
 本番サーバーへの配置手順は [DEPLOY.md](C:\codex\renovation-estimate\DEPLOY.md) にまとめています。

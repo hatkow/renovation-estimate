@@ -42,6 +42,12 @@ type EstimateForm = {
   phone: string
   imageNames: string[]
   selectedProducts?: SelectedProductSummary[]
+  leadSource?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  landingPage?: string
+  referrerHost?: string
 }
 
 type SubmissionRecord = EstimateForm & {
@@ -113,6 +119,12 @@ type SupabaseSubmissionRow = {
   image_names: string[] | null
   uploaded_images: string[] | null
   selected_products: SelectedProductSummary[] | null
+  lead_source: string | null
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  landing_page: string | null
+  referrer_host: string | null
   estimated_low: number
   estimated_high: number
   submitted_at: string
@@ -289,6 +301,12 @@ const demoSubmissions: SubmissionRecord[] = [
       { categoryId: 'kitchen', categoryLabel: 'キッチン', productId: 'kitchen-lixil-ale', productLabel: 'アレスタ', maker: 'LIXIL', price: 770000 },
       { categoryId: 'bath', categoryLabel: '浴室', productId: 'bath-lixil-arise', productLabel: 'アライズ', maker: 'LIXIL', price: 880000 },
     ],
+    leadSource: 'google',
+    utmSource: 'google',
+    utmMedium: 'cpc',
+    utmCampaign: 'kitchen_lp',
+    landingPage: '/?utm_source=google&utm_medium=cpc&utm_campaign=kitchen_lp',
+    referrerHost: 'www.google.com',
     estimatedLow: 1680000,
     estimatedHigh: 3280000,
     submittedAt: '2024/10/24',
@@ -313,6 +331,12 @@ const demoSubmissions: SubmissionRecord[] = [
       { categoryId: 'bath', categoryLabel: '浴室', productId: 'bath-toclas-every', productLabel: 'エブリィ', maker: 'TOCLAS', price: 200000 },
       { categoryId: 'washroom', categoryLabel: '洗面所', productId: 'wash-panasonic-c-line', productLabel: 'シーライン', maker: 'Panasonic', price: 500000 },
     ],
+    leadSource: 'instagram',
+    utmSource: 'instagram',
+    utmMedium: 'social',
+    utmCampaign: 'bath_reel',
+    landingPage: '/?utm_source=instagram&utm_medium=social&utm_campaign=bath_reel',
+    referrerHost: 'www.instagram.com',
     estimatedLow: 1980000,
     estimatedHigh: 3760000,
     submittedAt: '2024/10/22',
@@ -336,6 +360,12 @@ const demoSubmissions: SubmissionRecord[] = [
     selectedProducts: [
       { categoryId: 'interior', categoryLabel: '内装', productId: 'interior-flooring-natural', productLabel: '床材リニューアル', maker: 'DAIKEN', price: 260000 },
     ],
+    leadSource: 'line',
+    utmSource: 'line',
+    utmMedium: 'message',
+    utmCampaign: 'owner_follow',
+    landingPage: '/?utm_source=line&utm_medium=message&utm_campaign=owner_follow',
+    referrerHost: 'line.me',
     estimatedLow: 1280000,
     estimatedHigh: 2420000,
     submittedAt: '2024/10/19',
@@ -359,6 +389,12 @@ const demoSubmissions: SubmissionRecord[] = [
     selectedProducts: [
       { categoryId: 'toilet', categoryLabel: 'トイレ', productId: 'toilet-lixil-ameju', productLabel: 'アメージュZA', maker: 'LIXIL', price: 198000 },
     ],
+    leadSource: 'direct',
+    utmSource: '',
+    utmMedium: '',
+    utmCampaign: '',
+    landingPage: '/',
+    referrerHost: '',
     estimatedLow: 310000,
     estimatedHigh: 690000,
     submittedAt: '2024/10/18',
@@ -392,6 +428,50 @@ function isFixedCategoryId(id: string): id is CategoryId {
 }
 
 const numberFormatter = new Intl.NumberFormat('ja-JP')
+
+function detectLeadSource() {
+  if (typeof window === 'undefined') {
+    return {
+      leadSource: 'direct',
+      utmSource: '',
+      utmMedium: '',
+      utmCampaign: '',
+      landingPage: '',
+      referrerHost: '',
+    }
+  }
+
+  const url = new URL(window.location.href)
+  const utmSource = url.searchParams.get('utm_source') ?? ''
+  const utmMedium = url.searchParams.get('utm_medium') ?? ''
+  const utmCampaign = url.searchParams.get('utm_campaign') ?? ''
+  const landingPage = `${url.pathname}${url.search}`
+  const referrerHost = document.referrer ? new URL(document.referrer).hostname : ''
+
+  let leadSource = 'direct'
+  if (utmSource || utmMedium || utmCampaign) {
+    leadSource = utmSource || utmMedium || 'campaign'
+  } else if (referrerHost.includes('google')) {
+    leadSource = 'google'
+  } else if (referrerHost.includes('instagram')) {
+    leadSource = 'instagram'
+  } else if (referrerHost.includes('facebook')) {
+    leadSource = 'facebook'
+  } else if (referrerHost.includes('line')) {
+    leadSource = 'line'
+  } else if (referrerHost) {
+    leadSource = referrerHost
+  }
+
+  return {
+    leadSource,
+    utmSource,
+    utmMedium,
+    utmCampaign,
+    landingPage,
+    referrerHost,
+  }
+}
 
 function readStoredSubmissions() {
   if (typeof window === 'undefined') return []
@@ -462,6 +542,12 @@ function mapSupabaseRow(row: SupabaseSubmissionRow): SubmissionRecord {
     imageNames: row.image_names ?? [],
     uploadedImages: row.uploaded_images ?? [],
     selectedProducts: row.selected_products ?? [],
+    leadSource: row.lead_source ?? 'direct',
+    utmSource: row.utm_source ?? '',
+    utmMedium: row.utm_medium ?? '',
+    utmCampaign: row.utm_campaign ?? '',
+    landingPage: row.landing_page ?? '',
+    referrerHost: row.referrer_host ?? '',
     estimatedLow: row.estimated_low,
     estimatedHigh: row.estimated_high,
     submittedAt: new Date(row.submitted_at).toLocaleString('ja-JP'),
@@ -486,6 +572,12 @@ function mapPayloadToSupabase(payload: SubmissionPayload, uploadedImages: string
     image_names: payload.imageNames,
     uploaded_images: uploadedImages,
     selected_products: payload.selectedProducts ?? [],
+    lead_source: payload.leadSource ?? 'direct',
+    utm_source: payload.utmSource ?? '',
+    utm_medium: payload.utmMedium ?? '',
+    utm_campaign: payload.utmCampaign ?? '',
+    landing_page: payload.landingPage ?? '',
+    referrer_host: payload.referrerHost ?? '',
     estimated_low: payload.estimatedLow,
     estimated_high: payload.estimatedHigh,
     status: payload.status ?? 'pending',
@@ -819,6 +911,8 @@ function App() {
     const categoryCounts = new Map<string, number>()
     const optionCounts = new Map<string, number>()
     const prefectureCounts = new Map<string, number>()
+    const sourceCounts = new Map<string, number>()
+    const campaignCounts = new Map<string, number>()
     const segmentCounts = {
       hot: 0,
       warm: 0,
@@ -831,6 +925,10 @@ function App() {
     for (const submission of safeSubmissions) {
       categoryCounts.set(submission.category, (categoryCounts.get(submission.category) ?? 0) + 1)
       prefectureCounts.set(submission.prefecture, (prefectureCounts.get(submission.prefecture) ?? 0) + 1)
+      sourceCounts.set(submission.leadSource ?? 'direct', (sourceCounts.get(submission.leadSource ?? 'direct') ?? 0) + 1)
+      if (submission.utmCampaign) {
+        campaignCounts.set(submission.utmCampaign, (campaignCounts.get(submission.utmCampaign) ?? 0) + 1)
+      }
       if (submission.grade !== 'standard') premiumCount += 1
       if (submission.timing === 'asap' || submission.timing === 'within3Months') urgentCount += 1
       if (submission.options.includes('design')) designCount += 1
@@ -888,6 +986,24 @@ function App() {
 
     const topProducts = [...productCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5)
 
+    const topSources = [...sourceCounts.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        rate: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
+    const topCampaigns = [...campaignCounts.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        rate: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
     const topPrefectures = [...prefectureCounts.entries()]
       .map(([label, count]) => ({
         label,
@@ -936,6 +1052,8 @@ function App() {
       total,
       topCategories,
       topProducts,
+      topSources,
+      topCampaigns,
       topPrefectures,
       topOptions,
       premiumRate,
@@ -1293,6 +1411,12 @@ function App() {
       '人気商品',
       ...marketingInsights.topProducts.map((item) => `- ${item.label}: ${item.count}件`),
       '',
+      '流入元',
+      ...marketingInsights.topSources.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
+      '',
+      'キャンペーン',
+      ...marketingInsights.topCampaigns.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
+      '',
       '人気オプション',
       ...marketingInsights.topOptions.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
       '',
@@ -1386,11 +1510,18 @@ function App() {
         } satisfies SelectedProductSummary
       })
       .filter((item): item is SelectedProductSummary => Boolean(item))
+    const leadAttribution = detectLeadSource()
     const payload = {
       ...form,
       category: primaryCategory,
       plan: primaryProductId || 'custom-package',
       selectedProducts: selectedProductSummaries,
+      leadSource: leadAttribution.leadSource,
+      utmSource: leadAttribution.utmSource,
+      utmMedium: leadAttribution.utmMedium,
+      utmCampaign: leadAttribution.utmCampaign,
+      landingPage: leadAttribution.landingPage,
+      referrerHost: leadAttribution.referrerHost,
       estimatedLow: Math.round(estimate.low),
       estimatedHigh: Math.round(estimate.high),
       notes:
@@ -2147,6 +2278,41 @@ function App() {
 
               <div className="analytics-card">
                 <div className="panel-head">
+                  <h3>流入元分析</h3>
+                </div>
+                <div className="analytics-split">
+                  <div>
+                    <h4>流入元</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topSources.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>キャンペーン</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topCampaigns.length > 0 ? marketingInsights.topCampaigns.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      )) : (
+                        <li>
+                          <span>UTM未設定</span>
+                          <strong>広告URLに `utm_source` と `utm_campaign` を付けると分析できます</strong>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="analytics-card">
+                <div className="panel-head">
                   <h3>地域と検討温度</h3>
                 </div>
                 <div className="analytics-split">
@@ -2447,6 +2613,14 @@ function App() {
                   ) : (
                     <strong>記録なし</strong>
                   )}
+                </div>
+                <div>
+                  <span>流入元</span>
+                  <strong>{selectedSubmission.leadSource || 'direct'}</strong>
+                </div>
+                <div>
+                  <span>キャンペーン</span>
+                  <strong>{selectedSubmission.utmCampaign || '未設定'}</strong>
                 </div>
                 <div className="detail-wide">
                   <span>画像</span>

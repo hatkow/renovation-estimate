@@ -17,6 +17,12 @@ create table if not exists public.estimate_submissions (
   image_names jsonb not null default '[]'::jsonb,
   uploaded_images jsonb not null default '[]'::jsonb,
   selected_products jsonb not null default '[]'::jsonb,
+  lead_source text not null default 'direct',
+  utm_source text not null default '',
+  utm_medium text not null default '',
+  utm_campaign text not null default '',
+  landing_page text not null default '',
+  referrer_host text not null default '',
   estimated_low bigint not null default 0,
   estimated_high bigint not null default 0,
   submitted_at timestamptz not null default timezone('utc', now()),
@@ -25,6 +31,24 @@ create table if not exists public.estimate_submissions (
 
 alter table public.estimate_submissions
 add column if not exists selected_products jsonb not null default '[]'::jsonb;
+
+alter table public.estimate_submissions
+add column if not exists lead_source text not null default 'direct';
+
+alter table public.estimate_submissions
+add column if not exists utm_source text not null default '';
+
+alter table public.estimate_submissions
+add column if not exists utm_medium text not null default '';
+
+alter table public.estimate_submissions
+add column if not exists utm_campaign text not null default '';
+
+alter table public.estimate_submissions
+add column if not exists landing_page text not null default '';
+
+alter table public.estimate_submissions
+add column if not exists referrer_host text not null default '';
 
 create table if not exists public.simulator_configs (
   config_key text primary key,
