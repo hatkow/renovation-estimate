@@ -74,6 +74,10 @@ type AdminCategoryCard = {
   meta: string
 }
 
+type AdminProduct = EquipmentItem & {
+  categoryId: CategoryId
+}
+
 const STORAGE_KEY = 'renovation-estimate-submissions'
 const CONFIG_STORAGE_KEY = 'renovation-estimate-config'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -105,6 +109,7 @@ type SupabaseSubmissionRow = {
 type SimulatorConfigPayload = {
   pricingRows: PricingRow[]
   adminCategories: AdminCategoryCard[]
+  adminProducts: AdminProduct[]
 }
 
 type SupabaseConfigRow = {
@@ -347,6 +352,13 @@ const defaultAdminCategories: AdminCategoryCard[] = categories.map((category) =>
   heroLabel: category.heroLabel,
   meta: '8件の設定が有効',
 }))
+
+const defaultAdminProducts: AdminProduct[] = Object.entries(equipmentCatalog).flatMap(([categoryId, items]) =>
+  items.map((item) => ({
+    ...item,
+    categoryId: categoryId as CategoryId,
+  })),
+)
 
 const numberFormatter = new Intl.NumberFormat('ja-JP')
 
@@ -597,10 +609,20 @@ function App() {
     interior: '',
   })
   const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(defaultAdminCategories)
+  const [adminProducts, setAdminProducts] = useState<AdminProduct[]>(defaultAdminProducts)
   const [requestPage, setRequestPage] = useState(1)
   const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string }>({
     status: 'pending',
     notes: '',
+  })
+  const [productDraft, setProductDraft] = useState<AdminProduct>({
+    id: '',
+    categoryId: 'kitchen',
+    maker: '',
+    name: '',
+    subtitle: '',
+    price: 0,
+    badge: '',
   })
   const dataSourceBadge = getDataSourceBadge(dataSource)
 
@@ -643,9 +665,11 @@ function App() {
           if (!isMounted || !row?.config_value) return
           setPricingRows(row.config_value.pricingRows ?? defaultPricingRows)
           setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
+          setAdminProducts(row.config_value.adminProducts ?? defaultAdminProducts)
           writeStoredConfig({
             pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
             adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
+            adminProducts: row.config_value.adminProducts ?? defaultAdminProducts,
           })
           return
         }
@@ -658,6 +682,7 @@ function App() {
       if (storedConfig) {
         setPricingRows(storedConfig.pricingRows ?? defaultPricingRows)
         setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
+        setAdminProducts(storedConfig.adminProducts ?? defaultAdminProducts)
       }
     }
 
@@ -666,29 +691,6 @@ function App() {
       isMounted = false
     }
   }, [])
-
-  const estimate = useMemo(() => {
-    const optionMultiplier = form.options.reduce((accumulator, optionId) => {
-      const option = optionCatalog.find((item) => item.id === optionId)
-      return option ? accumulator * option.multiplier : accumulator
-    }, 1)
-    const gradeMultiplier = gradeConfig[form.grade].multiplier
-    const timingMultiplier = form.timing === 'asap' ? 1.08 : 1
-    const sizeMultiplier = 1 + Math.max(form.area - 1, 0) * 0.1
-    const selectedItems = categoryOrder
-      .map((categoryId) => equipmentCatalog[categoryId].find((item) => item.id === selectedProducts[categoryId]))
-      .filter((item): item is EquipmentItem => Boolean(item))
-    const baseTotal = selectedItems.reduce((sum, item) => sum + item.price, 0)
-    const low = baseTotal * optionMultiplier * gradeMultiplier * timingMultiplier * sizeMultiplier
-    return {
-      low,
-      high: low * 1.22,
-      labor: low * 0.34,
-      material: low * 0.66,
-      duration: 5 + selectedItems.length * 2 + form.options.length,
-      items: selectedItems,
-    }
-  }, [form.area, form.grade, form.options, form.timing, selectedProducts])
 
   const adminMetrics = useMemo(() => {
     const total = submissions.length
@@ -712,6 +714,38 @@ function App() {
       return matchesQuery && matchesArea && matchesStatus
     })
   }, [areaFilter, searchQuery, statusFilter, submissions])
+
+  const catalogByCategory = useMemo(() => {
+    return categoryOrder.reduce<Record<CategoryId, EquipmentItem[]>>((accumulator, categoryId) => {
+      accumulator[categoryId] = adminProducts
+        .filter((product) => product.categoryId === categoryId)
+        .map(({ categoryId: _categoryId, ...product }) => product)
+      return accumulator
+    }, {} as Record<CategoryId, EquipmentItem[]>)
+  }, [adminProducts])
+
+  const estimate = useMemo(() => {
+    const optionMultiplier = form.options.reduce((accumulator, optionId) => {
+      const option = optionCatalog.find((item) => item.id === optionId)
+      return option ? accumulator * option.multiplier : accumulator
+    }, 1)
+    const gradeMultiplier = gradeConfig[form.grade].multiplier
+    const timingMultiplier = form.timing === 'asap' ? 1.08 : 1
+    const sizeMultiplier = 1 + Math.max(form.area - 1, 0) * 0.1
+    const selectedItems = categoryOrder
+      .map((categoryId) => catalogByCategory[categoryId]?.find((item) => item.id === selectedProducts[categoryId]))
+      .filter((item): item is EquipmentItem => Boolean(item))
+    const baseTotal = selectedItems.reduce((sum, item) => sum + item.price, 0)
+    const low = baseTotal * optionMultiplier * gradeMultiplier * timingMultiplier * sizeMultiplier
+    return {
+      low,
+      high: low * 1.22,
+      labor: low * 0.34,
+      material: low * 0.66,
+      duration: 5 + selectedItems.length * 2 + form.options.length,
+      items: selectedItems,
+    }
+  }, [catalogByCategory, form.area, form.grade, form.options, form.timing, selectedProducts])
 
   const pageSize = 5
   const totalRequestPages = Math.max(1, Math.ceil(filteredSubmissions.length / pageSize))
@@ -828,6 +862,7 @@ function App() {
     persistSimulatorConfig({
       pricingRows,
       adminCategories,
+      adminProducts,
     })
   }
 
@@ -835,9 +870,11 @@ function App() {
     const payload = {
       pricingRows: defaultPricingRows,
       adminCategories: defaultAdminCategories,
+      adminProducts: defaultAdminProducts,
     }
     setPricingRows(defaultPricingRows)
     setAdminCategories(defaultAdminCategories)
+    setAdminProducts(defaultAdminProducts)
     persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
 
@@ -854,6 +891,36 @@ function App() {
       },
     ])
     showAdminMessage('新規カテゴリの下書きを追加しました。')
+  }
+
+  function addProductCard() {
+    if (!productDraft.maker || !productDraft.name || !productDraft.subtitle || productDraft.price <= 0) {
+      showAdminMessage('商品登録にはメーカー名、商品名、説明、価格の入力が必要です。')
+      return
+    }
+
+    const nextProduct: AdminProduct = {
+      ...productDraft,
+      id: `${productDraft.categoryId}-${Date.now()}`,
+      badge: productDraft.badge || undefined,
+    }
+
+    setAdminProducts((current) => [...current, nextProduct])
+    setProductDraft({
+      id: '',
+      categoryId: productDraft.categoryId,
+      maker: '',
+      name: '',
+      subtitle: '',
+      price: 0,
+      badge: '',
+    })
+    showAdminMessage('商品を追加しました。変更を反映で保存できます。')
+  }
+
+  function removeProduct(productId: string) {
+    setAdminProducts((current) => current.filter((product) => product.id !== productId))
+    showAdminMessage('商品を削除しました。変更を反映で保存できます。')
   }
 
   function persistSimulatorConfig(payload: SimulatorConfigPayload, successMessage = '設定内容を反映しました。') {
@@ -1102,7 +1169,7 @@ function App() {
 
             {categoryOrder.map((categoryId, index) => {
               const category = categories.find((item) => item.id === categoryId) ?? categories[0]
-              const products = equipmentCatalog[categoryId]
+              const products = catalogByCategory[categoryId] ?? []
               const selectedProductId = selectedProducts[categoryId]
 
               return (
@@ -1629,6 +1696,61 @@ function App() {
                         <input value={`¥${row.standard.toLocaleString('ja-JP')}`} onChange={(event) => updatePricingRow(index, 'standard', event.target.value)} />
                         <input value={`¥${row.premium.toLocaleString('ja-JP')}`} onChange={(event) => updatePricingRow(index, 'premium', event.target.value)} />
                         <input value={`¥${row.artisan.toLocaleString('ja-JP')}`} onChange={(event) => updatePricingRow(index, 'artisan', event.target.value)} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="config-card">
+                  <div className="panel-head">
+                    <div>
+                      <h3>商品管理</h3>
+                      <p>見積もり画面に表示する設備商品を登録します。</p>
+                    </div>
+                  </div>
+                  <div className="controls-grid controls-grid-wide product-form-grid">
+                    <label className="field">
+                      <span>カテゴリ</span>
+                      <select value={productDraft.categoryId} onChange={(event) => setProductDraft((current) => ({ ...current, categoryId: event.target.value as CategoryId }))}>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>{category.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>メーカー</span>
+                      <input value={productDraft.maker} onChange={(event) => setProductDraft((current) => ({ ...current, maker: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>商品名</span>
+                      <input value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>価格</span>
+                      <input value={productDraft.price ? `¥${productDraft.price.toLocaleString('ja-JP')}` : ''} onChange={(event) => setProductDraft((current) => ({ ...current, price: parsePriceInput(event.target.value) }))} />
+                    </label>
+                    <label className="field field-wide">
+                      <span>説明文</span>
+                      <input value={productDraft.subtitle} onChange={(event) => setProductDraft((current) => ({ ...current, subtitle: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>バッジ</span>
+                      <input value={productDraft.badge ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, badge: event.target.value }))} placeholder="人気 / おすすめ" />
+                    </label>
+                  </div>
+                  <div className="submit-row config-inline-actions">
+                    <button className="nav-button primary" onClick={addProductCard}>商品を追加</button>
+                  </div>
+                  <div className="product-admin-list">
+                    {adminProducts.map((product) => (
+                      <div key={product.id} className="product-admin-row">
+                        <div>
+                          <strong>{categories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
+                          <p>{product.subtitle}</p>
+                        </div>
+                        <div className="product-admin-meta">
+                          <span>{formatCurrency(product.price)}</span>
+                          <button className="light-button" onClick={() => removeProduct(product.id)}>削除</button>
+                        </div>
                       </div>
                     ))}
                   </div>
