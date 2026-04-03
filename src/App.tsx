@@ -77,6 +77,7 @@ type AdminCategoryCard = {
 
 type AdminProduct = EquipmentItem & {
   categoryId: CategoryId
+  isVisible?: boolean
 }
 
 const STORAGE_KEY = 'renovation-estimate-submissions'
@@ -555,6 +556,20 @@ async function updateSubmissionInSupabase(record: SubmissionRecord) {
   return mapSupabaseRow(data as SupabaseSubmissionRow)
 }
 
+async function uploadProductImageToSupabase(file: File) {
+  if (!supabase || !isSupabaseConfigured) throw new Error('supabase is not configured')
+  const objectPath = `products/${Date.now()}-${crypto.randomUUID()}-${sanitizeFileName(file.name)}`
+  const { error } = await supabase.storage.from(supabaseBucket).upload(objectPath, file, {
+    cacheControl: '3600',
+    upsert: false,
+  })
+
+  if (error) throw error
+
+  const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(objectPath)
+  return data.publicUrl
+}
+
 async function fetchSimulatorConfigFromSupabase() {
   if (!supabase || !isSupabaseConfigured) throw new Error('supabase is not configured')
 
@@ -624,8 +639,10 @@ function App() {
     subtitle: '',
     price: 0,
     imageUrl: '',
+    isVisible: true,
     badge: '',
   })
+  const [productImageFile, setProductImageFile] = useState<File | null>(null)
   const dataSourceBadge = getDataSourceBadge(dataSource)
 
   useEffect(() => {
@@ -720,7 +737,7 @@ function App() {
   const catalogByCategory = useMemo(() => {
     return categoryOrder.reduce<Record<CategoryId, EquipmentItem[]>>((accumulator, categoryId) => {
       accumulator[categoryId] = adminProducts
-        .filter((product) => product.categoryId === categoryId)
+        .filter((product) => product.categoryId === categoryId && product.isVisible !== false)
         .map(({ categoryId: _categoryId, ...product }) => product)
       return accumulator
     }, {} as Record<CategoryId, EquipmentItem[]>)
@@ -895,10 +912,26 @@ function App() {
     showAdminMessage('新規カテゴリの下書きを追加しました。')
   }
 
-  function addProductCard() {
+  async function addProductCard() {
     if (!productDraft.maker || !productDraft.name || !productDraft.subtitle || productDraft.price <= 0) {
       showAdminMessage('商品登録にはメーカー名、商品名、説明、価格の入力が必要です。')
       return
+    }
+
+    let imageUrl = productDraft.imageUrl || undefined
+
+    if (productImageFile) {
+      if (!isSupabaseConfigured) {
+        showAdminMessage('画像ファイルのアップロードにはSupabase設定が必要です。画像URL入力をご利用ください。')
+        return
+      }
+
+      try {
+        imageUrl = await uploadProductImageToSupabase(productImageFile)
+      } catch {
+        showAdminMessage('商品画像のアップロードに失敗しました。')
+        return
+      }
     }
 
     const nextProduct: AdminProduct =
@@ -906,13 +939,13 @@ function App() {
         ? {
             ...productDraft,
             badge: productDraft.badge || undefined,
-            imageUrl: productDraft.imageUrl || undefined,
+            imageUrl,
           }
         : {
             ...productDraft,
             id: `${productDraft.categoryId}-${Date.now()}`,
             badge: productDraft.badge || undefined,
-            imageUrl: productDraft.imageUrl || undefined,
+            imageUrl,
           }
 
     setAdminProducts((current) =>
@@ -928,8 +961,10 @@ function App() {
       subtitle: '',
       price: 0,
       imageUrl: '',
+      isVisible: true,
       badge: '',
     })
+    setProductImageFile(null)
     showAdminMessage(productDraft.id !== '' ? '商品を更新しました。変更を反映で保存できます。' : '商品を追加しました。変更を反映で保存できます。')
   }
 
@@ -956,8 +991,18 @@ function App() {
     const target = adminProducts.find((product) => product.id === productId)
     if (!target) return
     setProductDraft(target)
+    setProductImageFile(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     showAdminMessage('商品編集モードに切り替えました。内容を直して「商品を更新」を押してください。')
+  }
+
+  function toggleProductVisibility(productId: string) {
+    setAdminProducts((current) =>
+      current.map((product) =>
+        product.id === productId ? { ...product, isVisible: product.isVisible === false } : product,
+      ),
+    )
+    showAdminMessage('商品の公開状態を切り替えました。変更を反映で保存できます。')
   }
 
   function persistSimulatorConfig(payload: SimulatorConfigPayload, successMessage = '設定内容を反映しました。') {
@@ -1778,14 +1823,26 @@ function App() {
                       <span>画像URL</span>
                       <input value={productDraft.imageUrl ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, imageUrl: event.target.value }))} placeholder="https://..." />
                     </label>
+                    <label className="field field-wide">
+                      <span>画像ファイル</span>
+                      <input type="file" accept="image/*" onChange={(event) => setProductImageFile(event.target.files?.[0] ?? null)} />
+                      <small>{productImageFile ? productImageFile.name : 'Supabase設定時はファイルアップロードも使えます。'}</small>
+                    </label>
+                    <label className="field">
+                      <span>公開状態</span>
+                      <select value={productDraft.isVisible === false ? 'hidden' : 'visible'} onChange={(event) => setProductDraft((current) => ({ ...current, isVisible: event.target.value === 'visible' }))}>
+                        <option value="visible">公開</option>
+                        <option value="hidden">非公開</option>
+                      </select>
+                    </label>
                     <label className="field">
                       <span>バッジ</span>
                       <input value={productDraft.badge ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, badge: event.target.value }))} placeholder="人気 / おすすめ" />
                     </label>
                   </div>
                   <div className="submit-row config-inline-actions">
-                    <button className="nav-button primary" onClick={addProductCard}>{productDraft.id ? '商品を更新' : '商品を追加'}</button>
-                    {productDraft.id ? <button className="light-button" onClick={() => setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, imageUrl: '', badge: '' })}>編集をキャンセル</button> : null}
+                    <button className="nav-button primary" onClick={() => void addProductCard()}>{productDraft.id ? '商品を更新' : '商品を追加'}</button>
+                    {productDraft.id ? <button className="light-button" onClick={() => { setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, imageUrl: '', isVisible: true, badge: '' }); setProductImageFile(null) }}>編集をキャンセル</button> : null}
                   </div>
                   <div className="product-admin-list">
                     {adminProducts.map((product) => (
@@ -1796,9 +1853,11 @@ function App() {
                           <p>{product.subtitle}</p>
                         </div>
                         <div className="product-admin-meta">
+                          <span className={`status-pill-inline ${product.isVisible === false ? 'status-amber' : 'status-green'}`}>{product.isVisible === false ? '非公開' : '公開中'}</span>
                           <span>{formatCurrency(product.price)}</span>
                           <button className="light-button" onClick={() => moveProduct(product.id, 'up')}>↑</button>
                           <button className="light-button" onClick={() => moveProduct(product.id, 'down')}>↓</button>
+                          <button className="light-button" onClick={() => toggleProductVisibility(product.id)}>{product.isVisible === false ? '公開' : '非公開'}</button>
                           <button className="light-button" onClick={() => editProduct(product.id)}>編集</button>
                           <button className="light-button" onClick={() => removeProduct(product.id)}>削除</button>
                         </div>
