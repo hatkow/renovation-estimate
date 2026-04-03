@@ -63,6 +63,7 @@ type EquipmentItem = {
   name: string
   subtitle: string
   price: number
+  imageUrl?: string
   badge?: string
 }
 
@@ -622,6 +623,7 @@ function App() {
     name: '',
     subtitle: '',
     price: 0,
+    imageUrl: '',
     badge: '',
   })
   const dataSourceBadge = getDataSourceBadge(dataSource)
@@ -904,11 +906,13 @@ function App() {
         ? {
             ...productDraft,
             badge: productDraft.badge || undefined,
+            imageUrl: productDraft.imageUrl || undefined,
           }
         : {
             ...productDraft,
             id: `${productDraft.categoryId}-${Date.now()}`,
             badge: productDraft.badge || undefined,
+            imageUrl: productDraft.imageUrl || undefined,
           }
 
     setAdminProducts((current) =>
@@ -923,6 +927,7 @@ function App() {
       name: '',
       subtitle: '',
       price: 0,
+      imageUrl: '',
       badge: '',
     })
     showAdminMessage(productDraft.id !== '' ? '商品を更新しました。変更を反映で保存できます。' : '商品を追加しました。変更を反映で保存できます。')
@@ -931,6 +936,20 @@ function App() {
   function removeProduct(productId: string) {
     setAdminProducts((current) => current.filter((product) => product.id !== productId))
     showAdminMessage('商品を削除しました。変更を反映で保存できます。')
+  }
+
+  function moveProduct(productId: string, direction: 'up' | 'down') {
+    setAdminProducts((current) => {
+      const index = current.findIndex((product) => product.id === productId)
+      if (index === -1) return current
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= current.length) return current
+      const next = [...current]
+      const [item] = next.splice(index, 1)
+      next.splice(targetIndex, 0, item)
+      return next
+    })
+    showAdminMessage(direction === 'up' ? '商品を上へ移動しました。' : '商品を下へ移動しました。')
   }
 
   function editProduct(productId: string) {
@@ -1218,6 +1237,11 @@ function App() {
                           </div>
                           {product.badge ? <span className="product-badge">{product.badge}</span> : null}
                         </div>
+                        {product.imageUrl ? (
+                          <div className="product-image-wrap">
+                            <img className="product-image" src={product.imageUrl} alt={product.name} />
+                          </div>
+                        ) : null}
                         <p>{product.subtitle}</p>
                         <div className="product-card-bottom">
                           <span className="product-price-label">参考価格</span>
@@ -1750,6 +1774,10 @@ function App() {
                       <span>説明文</span>
                       <input value={productDraft.subtitle} onChange={(event) => setProductDraft((current) => ({ ...current, subtitle: event.target.value }))} />
                     </label>
+                    <label className="field field-wide">
+                      <span>画像URL</span>
+                      <input value={productDraft.imageUrl ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, imageUrl: event.target.value }))} placeholder="https://..." />
+                    </label>
                     <label className="field">
                       <span>バッジ</span>
                       <input value={productDraft.badge ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, badge: event.target.value }))} placeholder="人気 / おすすめ" />
@@ -1757,17 +1785,20 @@ function App() {
                   </div>
                   <div className="submit-row config-inline-actions">
                     <button className="nav-button primary" onClick={addProductCard}>{productDraft.id ? '商品を更新' : '商品を追加'}</button>
-                    {productDraft.id ? <button className="light-button" onClick={() => setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, badge: '' })}>編集をキャンセル</button> : null}
+                    {productDraft.id ? <button className="light-button" onClick={() => setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, imageUrl: '', badge: '' })}>編集をキャンセル</button> : null}
                   </div>
                   <div className="product-admin-list">
                     {adminProducts.map((product) => (
                       <div key={product.id} className="product-admin-row">
-                        <div>
+                        <div className="product-admin-main">
+                          {product.imageUrl ? <img className="product-admin-thumb" src={product.imageUrl} alt={product.name} /> : <div className="product-admin-thumb placeholder">NO IMAGE</div>}
                           <strong>{categories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
                           <p>{product.subtitle}</p>
                         </div>
                         <div className="product-admin-meta">
                           <span>{formatCurrency(product.price)}</span>
+                          <button className="light-button" onClick={() => moveProduct(product.id, 'up')}>↑</button>
+                          <button className="light-button" onClick={() => moveProduct(product.id, 'down')}>↓</button>
                           <button className="light-button" onClick={() => editProduct(product.id)}>編集</button>
                           <button className="light-button" onClick={() => removeProduct(product.id)}>削除</button>
                         </div>
