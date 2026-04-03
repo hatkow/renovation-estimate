@@ -484,6 +484,23 @@ async function submitToApi(payload: SubmissionPayload, files: File[]) {
   return (await response.json()) as SubmissionRecord
 }
 
+async function updateSubmissionInSupabase(record: SubmissionRecord) {
+  if (!supabase || !isSupabaseConfigured) throw new Error('supabase is not configured')
+
+  const { data, error } = await supabase
+    .from('estimate_submissions')
+    .update({
+      status: record.status ?? 'pending',
+      notes: record.notes,
+    })
+    .eq('id', record.id)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapSupabaseRow(data as SupabaseSubmissionRow)
+}
+
 function App() {
   const [mainView, setMainView] = useState<MainView>('simulator')
   const [adminSection, setAdminSection] = useState<AdminSection>('requests')
@@ -521,6 +538,10 @@ function App() {
     })),
   )
   const [requestPage, setRequestPage] = useState(1)
+  const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string }>({
+    status: 'pending',
+    notes: '',
+  })
   const dataSourceBadge = getDataSourceBadge(dataSource)
 
   useEffect(() => {
@@ -614,6 +635,14 @@ function App() {
       setRequestPage(totalRequestPages)
     }
   }, [requestPage, totalRequestPages])
+
+  useEffect(() => {
+    if (!selectedSubmission) return
+    setDetailDraft({
+      status: selectedSubmission.status ?? 'pending',
+      notes: selectedSubmission.notes ?? '',
+    })
+  }, [selectedSubmission])
 
   function updateForm<K extends keyof EstimateForm>(key: K, value: EstimateForm[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -767,6 +796,38 @@ function App() {
     setSelectedSubmission(null)
     setMainView('simulator')
     setIsCtaOpen(false)
+  }
+
+  async function saveSubmissionDetail() {
+    if (!selectedSubmission) return
+
+    const updatedRecord: SubmissionRecord = {
+      ...selectedSubmission,
+      status: detailDraft.status,
+      notes: detailDraft.notes,
+    }
+
+    try {
+      let savedRecord = updatedRecord
+
+      if (dataSource === 'supabase' && isSupabaseConfigured) {
+        savedRecord = await updateSubmissionInSupabase(updatedRecord)
+      }
+
+      const nextSubmissions = submissions.map((submission) =>
+        submission.id === savedRecord.id ? savedRecord : submission,
+      )
+      setSubmissions(nextSubmissions)
+      setSelectedSubmission(savedRecord)
+
+      if (dataSource === 'local') {
+        writeStoredSubmissions(nextSubmissions)
+      }
+
+      showAdminMessage('見積もり詳細を保存しました。')
+    } catch {
+      showAdminMessage('詳細保存に失敗しました。接続設定を確認してください。')
+    }
   }
 
   function openConsultation(kind: 'reserve' | 'line' | 'support') {
@@ -1494,13 +1555,44 @@ function App() {
                 <div><span>依頼箇所</span><strong>{categories.find((item) => item.id === selectedSubmission.category)?.label}</strong></div>
                 <div><span>見積もり下限</span><strong>{formatCurrency(selectedSubmission.estimatedLow)}</strong></div>
                 <div><span>見積もり上限</span><strong>{formatCurrency(selectedSubmission.estimatedHigh)}</strong></div>
-                <div><span>ステータス</span><strong>{statusLabels[selectedSubmission.status ?? 'pending'].label}</strong></div>
+                <div>
+                  <span>ステータス</span>
+                  <select value={detailDraft.status} onChange={(event) => setDetailDraft((current) => ({ ...current, status: event.target.value as Status }))}>
+                    <option value="pending">未対応</option>
+                    <option value="contacted">連絡済み</option>
+                    <option value="completed">完了</option>
+                  </select>
+                </div>
                 <div><span>希望時期</span><strong>{timingLabels[selectedSubmission.timing]}</strong></div>
                 <div><span>住所</span><strong>{selectedSubmission.prefecture}{selectedSubmission.city}</strong></div>
                 <div><span>連絡先</span><strong>{selectedSubmission.phone}</strong></div>
                 <div className="detail-wide"><span>メール</span><strong>{selectedSubmission.email}</strong></div>
-                <div className="detail-wide"><span>画像</span><strong>{selectedSubmission.imageNames.length > 0 ? selectedSubmission.imageNames.join(' / ') : 'なし'}</strong></div>
-                <div className="detail-wide"><span>メモ</span><strong>{selectedSubmission.notes || '補足メモなし'}</strong></div>
+                <div className="detail-wide">
+                  <span>画像</span>
+                  {selectedSubmission.uploadedImages && selectedSubmission.uploadedImages.length > 0 ? (
+                    <div className="detail-image-grid">
+                      {selectedSubmission.uploadedImages.map((imageUrl, index) => (
+                        <a key={imageUrl} href={imageUrl} target="_blank" rel="noreferrer" className="detail-image-card">
+                          <img src={imageUrl} alt={`${selectedSubmission.customerName} の添付画像 ${index + 1}`} />
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <strong>{selectedSubmission.imageNames.length > 0 ? selectedSubmission.imageNames.join(' / ') : 'なし'}</strong>
+                  )}
+                </div>
+                <div className="detail-wide">
+                  <span>メモ</span>
+                  <textarea
+                    rows={4}
+                    value={detailDraft.notes}
+                    onChange={(event) => setDetailDraft((current) => ({ ...current, notes: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="detail-actions">
+                <button className="light-button" onClick={() => setSelectedSubmission(null)}>閉じる</button>
+                <button className="nav-button primary" onClick={saveSubmissionDetail}>保存する</button>
               </div>
             </div>
           </div>
