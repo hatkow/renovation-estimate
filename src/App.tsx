@@ -899,13 +899,23 @@ function App() {
       return
     }
 
-    const nextProduct: AdminProduct = {
-      ...productDraft,
-      id: `${productDraft.categoryId}-${Date.now()}`,
-      badge: productDraft.badge || undefined,
-    }
+    const nextProduct: AdminProduct =
+      productDraft.id !== ''
+        ? {
+            ...productDraft,
+            badge: productDraft.badge || undefined,
+          }
+        : {
+            ...productDraft,
+            id: `${productDraft.categoryId}-${Date.now()}`,
+            badge: productDraft.badge || undefined,
+          }
 
-    setAdminProducts((current) => [...current, nextProduct])
+    setAdminProducts((current) =>
+      productDraft.id !== ''
+        ? current.map((product) => (product.id === productDraft.id ? nextProduct : product))
+        : [...current, nextProduct],
+    )
     setProductDraft({
       id: '',
       categoryId: productDraft.categoryId,
@@ -915,12 +925,20 @@ function App() {
       price: 0,
       badge: '',
     })
-    showAdminMessage('商品を追加しました。変更を反映で保存できます。')
+    showAdminMessage(productDraft.id !== '' ? '商品を更新しました。変更を反映で保存できます。' : '商品を追加しました。変更を反映で保存できます。')
   }
 
   function removeProduct(productId: string) {
     setAdminProducts((current) => current.filter((product) => product.id !== productId))
     showAdminMessage('商品を削除しました。変更を反映で保存できます。')
+  }
+
+  function editProduct(productId: string) {
+    const target = adminProducts.find((product) => product.id === productId)
+    if (!target) return
+    setProductDraft(target)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    showAdminMessage('商品編集モードに切り替えました。内容を直して「商品を更新」を押してください。')
   }
 
   function persistSimulatorConfig(payload: SimulatorConfigPayload, successMessage = '設定内容を反映しました。') {
@@ -1738,7 +1756,8 @@ function App() {
                     </label>
                   </div>
                   <div className="submit-row config-inline-actions">
-                    <button className="nav-button primary" onClick={addProductCard}>商品を追加</button>
+                    <button className="nav-button primary" onClick={addProductCard}>{productDraft.id ? '商品を更新' : '商品を追加'}</button>
+                    {productDraft.id ? <button className="light-button" onClick={() => setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, badge: '' })}>編集をキャンセル</button> : null}
                   </div>
                   <div className="product-admin-list">
                     {adminProducts.map((product) => (
@@ -1749,6 +1768,7 @@ function App() {
                         </div>
                         <div className="product-admin-meta">
                           <span>{formatCurrency(product.price)}</span>
+                          <button className="light-button" onClick={() => editProduct(product.id)}>編集</button>
                           <button className="light-button" onClick={() => removeProduct(product.id)}>削除</button>
                         </div>
                       </div>
