@@ -66,6 +66,14 @@ type EquipmentItem = {
   badge?: string
 }
 
+type AdminCategoryCard = {
+  id: string
+  label: string
+  description: string
+  heroLabel: string
+  meta: string
+}
+
 const STORAGE_KEY = 'renovation-estimate-submissions'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -451,6 +459,16 @@ function getDataSourceBadge(source: DataSource) {
   return { tone: 'offline', label: 'ローカル表示中' }
 }
 
+function downloadTextFile(filename: string, content: string, type = 'text/plain;charset=utf-8;') {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 async function fetchSubmissionsFromApi() {
   const response = await fetch(`${API_BASE}/api/submissions`)
   if (!response.ok) throw new Error('failed to fetch submissions')
@@ -493,6 +511,16 @@ function App() {
     toilet: 'toilet-lixil-ameju',
     interior: '',
   })
+  const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(
+    categories.map((category) => ({
+      id: category.id,
+      label: category.label,
+      description: category.description,
+      heroLabel: category.heroLabel,
+      meta: '8件の設定が有効',
+    })),
+  )
+  const [requestPage, setRequestPage] = useState(1)
   const dataSourceBadge = getDataSourceBadge(dataSource)
 
   useEffect(() => {
@@ -570,6 +598,23 @@ function App() {
     })
   }, [areaFilter, searchQuery, statusFilter, submissions])
 
+  const pageSize = 5
+  const totalRequestPages = Math.max(1, Math.ceil(filteredSubmissions.length / pageSize))
+  const paginatedSubmissions = useMemo(() => {
+    const start = (requestPage - 1) * pageSize
+    return filteredSubmissions.slice(start, start + pageSize)
+  }, [filteredSubmissions, requestPage])
+
+  useEffect(() => {
+    setRequestPage(1)
+  }, [searchQuery, areaFilter, statusFilter])
+
+  useEffect(() => {
+    if (requestPage > totalRequestPages) {
+      setRequestPage(totalRequestPages)
+    }
+  }, [requestPage, totalRequestPages])
+
   function updateForm<K extends keyof EstimateForm>(key: K, value: EstimateForm[K]) {
     setForm((current) => ({ ...current, [key]: value }))
   }
@@ -617,12 +662,16 @@ function App() {
     setAdminSection(section)
   }
 
+  function showAdminMessage(message: string) {
+    setConfigSavedMessage(message)
+    window.setTimeout(() => setConfigSavedMessage(''), 3000)
+  }
+
   function openConfigCreator() {
     setMainView('admin')
     setAdminSection('config')
-    setConfigSavedMessage('新規設定の追加画面を開きました。カテゴリ追加または単価設定から編集を始めてください。')
+    showAdminMessage('新規設定の追加画面を開きました。カテゴリ追加または単価設定から編集を始めてください。')
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    window.setTimeout(() => setConfigSavedMessage(''), 3000)
   }
 
   function updatePricingRow(index: number, key: keyof Omit<PricingRow, 'label'>, rawValue: string) {
@@ -653,8 +702,7 @@ function App() {
   }
 
   function saveConfig() {
-    setConfigSavedMessage('設定内容を反映しました。')
-    window.setTimeout(() => setConfigSavedMessage(''), 2500)
+    showAdminMessage('設定内容を反映しました。')
   }
 
   function resetConfig() {
@@ -663,8 +711,74 @@ function App() {
       { label: 'フローリング（平方フィート）', standard: 12.5, premium: 18, artisan: 32 },
       { label: '造作収納（1フィート）', standard: 220, premium: 380, artisan: 650 },
     ])
-    setConfigSavedMessage('初期値に戻しました。')
-    window.setTimeout(() => setConfigSavedMessage(''), 2500)
+    showAdminMessage('初期値に戻しました。')
+  }
+
+  function addCategoryCard() {
+    const nextIndex = adminCategories.length + 1
+    setAdminCategories((current) => [
+      ...current,
+      {
+        id: `draft-${Date.now()}`,
+        label: `新規カテゴリ ${nextIndex}`,
+        description: '新しい見積もりカテゴリの下書きです。単価や表示文言をこれから設定できます。',
+        heroLabel: `NEW-${nextIndex}`,
+        meta: '下書き',
+      },
+    ])
+    showAdminMessage('新規カテゴリの下書きを追加しました。')
+  }
+
+  function downloadEstimateSummary() {
+    const lines = [
+      '概算見積もりサマリー',
+      `下限目安: ${formatCurrency(estimate.low)}`,
+      `上限目安: ${formatCurrency(estimate.high)}`,
+      `工事費: ${formatCurrency(estimate.labor)}`,
+      `材料費: ${formatCurrency(estimate.material)}`,
+      `想定工期: ${estimate.duration}日`,
+      '',
+      '選択設備',
+      ...estimate.items.map((item) => `- ${item.maker} ${item.name} / ${formatCurrency(item.price)}`),
+      '',
+      `お客様名: ${form.customerName}`,
+      `住所: ${form.prefecture}${form.city}`,
+      `希望時期: ${timingLabels[form.timing]}`,
+    ]
+    downloadTextFile(`estimate-summary-${Date.now()}.txt`, lines.join('\n'))
+  }
+
+  function downloadDashboardReport() {
+    const lines = [
+      '運用ダッシュボードレポート',
+      `総案件数: ${submissions.length}`,
+      `平均案件単価: ${formatCurrency(adminMetrics.average)}`,
+      `未対応件数: ${adminMetrics.pending}`,
+      `データソース: ${dataSourceBadge.label}`,
+    ]
+    downloadTextFile(`dashboard-report-${Date.now()}.txt`, lines.join('\n'))
+  }
+
+  function openSupport() {
+    window.open('mailto:webup.hatori@gmail.com?subject=ArtisanEstimator%20Support', '_blank', 'noopener,noreferrer')
+  }
+
+  function handleLogout() {
+    setSelectedSubmission(null)
+    setMainView('simulator')
+    setIsCtaOpen(false)
+  }
+
+  function openConsultation(kind: 'reserve' | 'line' | 'support') {
+    if (kind === 'reserve') {
+      window.open('mailto:webup.hatori@gmail.com?subject=無料相談予約&body=相談予約を希望します。', '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (kind === 'line') {
+      window.open('https://line.me/R/ti/p/@line', '_blank', 'noopener,noreferrer')
+      return
+    }
+    openSupport()
   }
 
   function handleImagesSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -738,9 +852,9 @@ function App() {
       <nav className="top-nav">
         <div className="brand">ArtisanEstimator</div>
         <div className="top-nav-links">
-          <button className="top-link is-active">Simulator</button>
-          <button className="top-link">Portfolio</button>
-          <button className="top-link">Process</button>
+          <button className="top-link is-active" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Simulator</button>
+          <button className="top-link" onClick={() => document.getElementById('catalog-start')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Portfolio</button>
+          <button className="top-link" onClick={() => document.getElementById('contact-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Process</button>
         </div>
         <div className="top-nav-actions">
           <span className={`header-status ${dataSourceBadge.tone}`}>
@@ -789,7 +903,7 @@ function App() {
               </div>
             </div>
 
-            <section className="sim-section">
+            <section className="sim-section" id="catalog-start">
               <div className="section-head">
                 <div>
                   <h2>設備を上から順に選んでください</h2>
@@ -857,7 +971,7 @@ function App() {
               )
             })}
 
-            <section className="sim-section">
+            <section className="sim-section" id="contact-form">
               <div className="section-head">
                 <div>
                   <h2>工事条件とオプション</h2>
@@ -1008,14 +1122,14 @@ function App() {
                   <strong>注記:</strong> 選択した設備の合計に、オプション、工事規模、時期を加味して概算を算出しています。
                 </p>
               </div>
-              <button className="download-button">概算PDFをダウンロード</button>
+              <button className="download-button" onClick={downloadEstimateSummary}>概算PDFをダウンロード</button>
             </div>
 
             <div className="expert-card">
               <div>
                 <h4>専門スタッフに相談しますか？</h4>
                 <p>見積もり後に、プロジェクト担当へそのまま相談できる導線です。</p>
-                <button className="link-button">無料相談へ進む</button>
+                <button className="link-button" onClick={() => openConsultation('reserve')}>無料相談へ進む</button>
               </div>
             </div>
           </aside>
@@ -1031,8 +1145,8 @@ function App() {
             <h3>内容を固めるご相談も可能です</h3>
             <p>概算表示後に、無料相談やLINE相談へ自然につなぐ想定のポップアップです。</p>
             <div className="cta-actions">
-              <button className="nav-button primary">無料相談を予約</button>
-              <button className="nav-button ghost">LINEで相談</button>
+              <button className="nav-button primary" onClick={() => openConsultation('reserve')}>無料相談を予約</button>
+              <button className="nav-button ghost" onClick={() => openConsultation('line')}>LINEで相談</button>
             </div>
           </div>
         </div>
@@ -1067,8 +1181,8 @@ function App() {
         <div className="sidebar-footer">
           <button className="sidebar-cta" onClick={openConfigCreator}>新規設定を追加</button>
           <div className="sidebar-links">
-            <button>サポート</button>
-            <button>ログアウト</button>
+            <button onClick={openSupport}>サポート</button>
+            <button onClick={handleLogout}>ログアウト</button>
           </div>
         </div>
       </aside>
@@ -1139,7 +1253,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                    {filteredSubmissions.map((submission) => {
+                    {paginatedSubmissions.map((submission) => {
                     const status = statusLabels[submission.status ?? 'pending']
                     return (
                       <tr key={submission.id}>
@@ -1166,12 +1280,12 @@ function App() {
                 </tbody>
               </table>
               <div className="table-footer">
-                  <span>{filteredSubmissions.length}件を表示中 / 全{submissions.length}件</span>
+                  <span>{paginatedSubmissions.length}件を表示中 / 全{filteredSubmissions.length}件</span>
                 <div className="pager">
-                  <button className="light-button" disabled>
+                  <button className="light-button" disabled={requestPage === 1} onClick={() => setRequestPage((page) => Math.max(1, page - 1))}>
                     前へ
                   </button>
-                  <button className="nav-button primary">次のページ</button>
+                  <button className="nav-button primary" disabled={requestPage === totalRequestPages} onClick={() => setRequestPage((page) => Math.min(totalRequestPages, page + 1))}>次のページ</button>
                 </div>
               </div>
             </section>
@@ -1203,7 +1317,7 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <div className="date-chip">2024年10月</div>
-                <button className="light-button">ダウンロード</button>
+                <button className="light-button" onClick={downloadDashboardReport}>ダウンロード</button>
               </div>
             </header>
             <section className="dashboard-grid">
@@ -1242,7 +1356,7 @@ function App() {
               <div className="activity-panel">
                 <div className="panel-head">
                   <h3>進行中の案件</h3>
-                  <button className="link-button dark">すべて見る</button>
+                  <button className="link-button dark" onClick={() => setAdminSection('requests')}>すべて見る</button>
                 </div>
                 <div className="activity-list">
                   {demoSubmissions.slice(0, 3).map((submission) => (
@@ -1302,15 +1416,15 @@ function App() {
                       <h3>リフォームカテゴリ</h3>
                       <p>見積もり画面に表示するカテゴリ設定です。</p>
                     </div>
-                    <button className="light-button">カテゴリ追加</button>
+                    <button className="light-button" onClick={addCategoryCard}>カテゴリ追加</button>
                   </div>
                   <div className="category-admin-grid">
-                    {categories.slice(0, 4).map((category) => (
+                    {adminCategories.map((category) => (
                       <div key={category.id} className="category-admin-card">
                         <div className="category-admin-icon">{category.heroLabel}</div>
                         <h4>{category.label}</h4>
                         <p>{category.description}</p>
-                        <div className="category-admin-meta">8件の設定が有効</div>
+                        <div className="category-admin-meta">{category.meta}</div>
                       </div>
                     ))}
                   </div>
