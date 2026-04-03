@@ -16,11 +16,15 @@ create table if not exists public.estimate_submissions (
   phone text not null,
   image_names jsonb not null default '[]'::jsonb,
   uploaded_images jsonb not null default '[]'::jsonb,
+  selected_products jsonb not null default '[]'::jsonb,
   estimated_low bigint not null default 0,
   estimated_high bigint not null default 0,
   submitted_at timestamptz not null default timezone('utc', now()),
   status text not null default 'pending'
 );
+
+alter table public.estimate_submissions
+add column if not exists selected_products jsonb not null default '[]'::jsonb;
 
 create table if not exists public.simulator_configs (
   config_key text primary key,

@@ -11,6 +11,15 @@ type MainView = 'simulator' | 'admin'
 type AdminSection = 'dashboard' | 'requests' | 'config'
 type Status = 'pending' | 'contacted' | 'completed'
 
+type SelectedProductSummary = {
+  categoryId: CategoryId
+  categoryLabel: string
+  productId: string
+  productLabel: string
+  maker: string
+  price: number
+}
+
 type PricingRow = {
   label: string
   standard: number
@@ -32,6 +41,7 @@ type EstimateForm = {
   email: string
   phone: string
   imageNames: string[]
+  selectedProducts?: SelectedProductSummary[]
 }
 
 type SubmissionRecord = EstimateForm & {
@@ -102,6 +112,7 @@ type SupabaseSubmissionRow = {
   phone: string
   image_names: string[] | null
   uploaded_images: string[] | null
+  selected_products: SelectedProductSummary[] | null
   estimated_low: number
   estimated_high: number
   submitted_at: string
@@ -274,6 +285,10 @@ const demoSubmissions: SubmissionRecord[] = [
     email: 'satou.hanako@example.com',
     phone: '090-1111-1111',
     imageNames: ['kitchen_before_01.jpg', 'kitchen_before_02.jpg'],
+    selectedProducts: [
+      { categoryId: 'kitchen', categoryLabel: 'キッチン', productId: 'kitchen-lixil-ale', productLabel: 'アレスタ', maker: 'LIXIL', price: 770000 },
+      { categoryId: 'bath', categoryLabel: '浴室', productId: 'bath-lixil-arise', productLabel: 'アライズ', maker: 'LIXIL', price: 880000 },
+    ],
     estimatedLow: 1680000,
     estimatedHigh: 3280000,
     submittedAt: '2024/10/24',
@@ -294,6 +309,10 @@ const demoSubmissions: SubmissionRecord[] = [
     email: 'suzuki.ichiro@example.com',
     phone: '080-2222-2222',
     imageNames: ['bathroom_before.jpg'],
+    selectedProducts: [
+      { categoryId: 'bath', categoryLabel: '浴室', productId: 'bath-toclas-every', productLabel: 'エブリィ', maker: 'TOCLAS', price: 200000 },
+      { categoryId: 'washroom', categoryLabel: '洗面所', productId: 'wash-panasonic-c-line', productLabel: 'シーライン', maker: 'Panasonic', price: 500000 },
+    ],
     estimatedLow: 1980000,
     estimatedHigh: 3760000,
     submittedAt: '2024/10/22',
@@ -314,6 +333,9 @@ const demoSubmissions: SubmissionRecord[] = [
     email: 'takahashi.misaki@example.com',
     phone: '070-3333-3333',
     imageNames: ['living_current.png'],
+    selectedProducts: [
+      { categoryId: 'interior', categoryLabel: '内装', productId: 'interior-flooring-natural', productLabel: '床材リニューアル', maker: 'DAIKEN', price: 260000 },
+    ],
     estimatedLow: 1280000,
     estimatedHigh: 2420000,
     submittedAt: '2024/10/19',
@@ -334,6 +356,9 @@ const demoSubmissions: SubmissionRecord[] = [
     email: 'tanaka.kouichi@example.com',
     phone: '070-5555-5555',
     imageNames: ['toilet_current.png'],
+    selectedProducts: [
+      { categoryId: 'toilet', categoryLabel: 'トイレ', productId: 'toilet-lixil-ameju', productLabel: 'アメージュZA', maker: 'LIXIL', price: 198000 },
+    ],
     estimatedLow: 310000,
     estimatedHigh: 690000,
     submittedAt: '2024/10/18',
@@ -436,6 +461,7 @@ function mapSupabaseRow(row: SupabaseSubmissionRow): SubmissionRecord {
     phone: row.phone,
     imageNames: row.image_names ?? [],
     uploadedImages: row.uploaded_images ?? [],
+    selectedProducts: row.selected_products ?? [],
     estimatedLow: row.estimated_low,
     estimatedHigh: row.estimated_high,
     submittedAt: new Date(row.submitted_at).toLocaleString('ja-JP'),
@@ -459,6 +485,7 @@ function mapPayloadToSupabase(payload: SubmissionPayload, uploadedImages: string
     phone: payload.phone,
     image_names: payload.imageNames,
     uploaded_images: uploadedImages,
+    selected_products: payload.selectedProducts ?? [],
     estimated_low: payload.estimatedLow,
     estimated_high: payload.estimatedHigh,
     status: payload.status ?? 'pending',
@@ -785,6 +812,107 @@ function App() {
       items: selectedItems,
     }
   }, [catalogByCategory, form.area, form.grade, form.options, form.timing, selectedProducts])
+
+  const marketingInsights = useMemo(() => {
+    const safeSubmissions = submissions
+    const productCounts = new Map<string, { label: string; count: number }>()
+    const categoryCounts = new Map<string, number>()
+    const optionCounts = new Map<string, number>()
+    let premiumCount = 0
+    let urgentCount = 0
+    let designCount = 0
+
+    for (const submission of safeSubmissions) {
+      categoryCounts.set(submission.category, (categoryCounts.get(submission.category) ?? 0) + 1)
+      if (submission.grade !== 'standard') premiumCount += 1
+      if (submission.timing === 'asap' || submission.timing === 'within3Months') urgentCount += 1
+      if (submission.options.includes('design')) designCount += 1
+
+      for (const optionId of submission.options) {
+        optionCounts.set(optionId, (optionCounts.get(optionId) ?? 0) + 1)
+      }
+
+      const selected = submission.selectedProducts ?? []
+      if (selected.length > 0) {
+        for (const item of selected) {
+          const current = productCounts.get(item.productId)
+          productCounts.set(item.productId, {
+            label: `${item.maker} ${item.productLabel}`,
+            count: (current?.count ?? 0) + 1,
+          })
+        }
+        continue
+      }
+
+      const fallbackProduct = adminProducts.find((item) => item.id === submission.plan)
+      if (fallbackProduct) {
+        const current = productCounts.get(fallbackProduct.id)
+        productCounts.set(fallbackProduct.id, {
+          label: `${fallbackProduct.maker} ${fallbackProduct.name}`,
+          count: (current?.count ?? 0) + 1,
+        })
+      }
+    }
+
+    const total = safeSubmissions.length || 1
+    const topCategories = [...categoryCounts.entries()]
+      .map(([id, count]) => ({
+        id,
+        label: resolvedCategories.find((item) => item.id === id)?.label ?? id,
+        count,
+        rate: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+
+    const topProducts = [...productCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5)
+
+    const topOptions = [...optionCounts.entries()]
+      .map(([id, count]) => ({
+        id,
+        label: optionCatalog.find((item) => item.id === id)?.label ?? id,
+        count,
+        rate: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+
+    const premiumRate = Math.round((premiumCount / total) * 100)
+    const urgentRate = Math.round((urgentCount / total) * 100)
+    const designRate = Math.round((designCount / total) * 100)
+    const strongestCategory = topCategories[0]
+    const strongestOption = topOptions[0]
+    const strongestProduct = topProducts[0]
+
+    const recommendations = [
+      strongestCategory
+        ? `${strongestCategory.label} の訴求が最も強く、流入導線は ${strongestCategory.label} 特化LPや施工事例広告が有効です。`
+        : 'カテゴリデータが増えると、優先投資すべき訴求軸を自動で判断できます。',
+      strongestProduct
+        ? `商品では ${strongestProduct.label} の関心が高いため、比較表・価格訴求・施工写真を前面に出すと反応を伸ばしやすいです。`
+        : '商品選択データが増えると、メーカー別の人気分析ができます。',
+      strongestOption
+        ? `${strongestOption.label} の選択率が高く、セット提案やアップセルCTAに組み込む価値があります。`
+        : 'オプション選択率を見て、アップセルの定番パターンを育てられます。',
+      urgentRate >= 50
+        ? '急ぎ案件が多いため、「最短着工」「即日概算」などスピード訴求の広告文が有効です。'
+        : '急ぎ案件比率は高くないため、価格だけでなく事例や品質訴求も並行すると安定します。',
+      premiumRate >= 50 || designRate >= 40
+        ? 'プレミアム志向が強いので、安売りよりもデザイン事例・上位グレード比較の導線が向いています。'
+        : '標準グレード中心なので、価格の分かりやすさと施工の安心感を前に出す訴求が向いています。',
+    ]
+
+    return {
+      total,
+      topCategories,
+      topProducts,
+      topOptions,
+      premiumRate,
+      urgentRate,
+      designRate,
+      recommendations,
+    }
+  }, [adminProducts, resolvedCategories, submissions])
 
   const pageSize = 5
   const totalRequestPages = Math.max(1, Math.ceil(filteredSubmissions.length / pageSize))
@@ -1119,6 +1247,29 @@ function App() {
     downloadTextFile(`dashboard-report-${Date.now()}.txt`, lines.join('\n'))
   }
 
+  function downloadMarketingReport() {
+    const lines = [
+      'マーケティング分析レポート',
+      `総送信件数: ${marketingInsights.total}`,
+      `プレミアム志向率: ${marketingInsights.premiumRate}%`,
+      `早期検討率: ${marketingInsights.urgentRate}%`,
+      `デザイン提案選択率: ${marketingInsights.designRate}%`,
+      '',
+      '人気カテゴリ',
+      ...marketingInsights.topCategories.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
+      '',
+      '人気商品',
+      ...marketingInsights.topProducts.map((item) => `- ${item.label}: ${item.count}件`),
+      '',
+      '人気オプション',
+      ...marketingInsights.topOptions.map((item) => `- ${item.label}: ${item.count}件 (${item.rate}%)`),
+      '',
+      '推奨施策',
+      ...marketingInsights.recommendations.map((item, index) => `${index + 1}. ${item}`),
+    ]
+    downloadTextFile(`marketing-report-${Date.now()}.txt`, lines.join('\n'))
+  }
+
   function openSupport() {
     window.open('mailto:webup.hatori@gmail.com?subject=ArtisanEstimator%20Support', '_blank', 'noopener,noreferrer')
   }
@@ -1188,10 +1339,26 @@ function App() {
     const primaryCategory =
       categoryOrder.find((categoryId) => selectedProducts[categoryId]) ?? 'kitchen'
     const primaryProductId = selectedProducts[primaryCategory]
+    const selectedProductSummaries = categoryOrder
+      .map((categoryId) => {
+        const productId = selectedProducts[categoryId]
+        const product = catalogByCategory[categoryId]?.find((item) => item.id === productId)
+        if (!product) return null
+        return {
+          categoryId,
+          categoryLabel: resolvedCategories.find((item) => item.id === categoryId)?.label ?? categoryId,
+          productId: product.id,
+          productLabel: product.name,
+          maker: product.maker,
+          price: product.price,
+        } satisfies SelectedProductSummary
+      })
+      .filter((item): item is SelectedProductSummary => Boolean(item))
     const payload = {
       ...form,
       category: primaryCategory,
       plan: primaryProductId || 'custom-package',
+      selectedProducts: selectedProductSummaries,
       estimatedLow: Math.round(estimate.low),
       estimatedHigh: Math.round(estimate.high),
       notes:
@@ -1723,6 +1890,7 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <div className="date-chip">2024年10月</div>
+                <button className="light-button" onClick={downloadMarketingReport}>分析レポート</button>
                 <button className="light-button" onClick={downloadDashboardReport}>ダウンロード</button>
               </div>
             </header>
@@ -1797,6 +1965,74 @@ function App() {
                     <p>API負荷</p>
                     <strong>やや高負荷</strong>
                   </div>
+                </div>
+              </div>
+              <div className="marketing-panel">
+                <div className="panel-head">
+                  <h3>選択傾向分析</h3>
+                  <span className="date-chip">{marketingInsights.total}件を分析中</span>
+                </div>
+                <div className="marketing-metrics">
+                  <div className="mini-metric">
+                    <span>プレミアム志向</span>
+                    <strong>{marketingInsights.premiumRate}%</strong>
+                  </div>
+                  <div className="mini-metric">
+                    <span>早期検討率</span>
+                    <strong>{marketingInsights.urgentRate}%</strong>
+                  </div>
+                  <div className="mini-metric">
+                    <span>提案型ニーズ</span>
+                    <strong>{marketingInsights.designRate}%</strong>
+                  </div>
+                </div>
+                <div className="trend-columns">
+                  <div>
+                    <h4>人気カテゴリ</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topCategories.map((item) => (
+                        <li key={item.id}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>人気商品</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topProducts.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>人気オプション</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topOptions.map((item) => (
+                        <li key={item.id}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div className="campaign-panel">
+                <div className="panel-head">
+                  <h3>推奨マーケ施策</h3>
+                </div>
+                <div className="campaign-list">
+                  {marketingInsights.recommendations.map((item, index) => (
+                    <div key={item} className="campaign-item">
+                      <span>{String(index + 1).padStart(2, '0')}</span>
+                      <p>{item}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
@@ -2036,6 +2272,20 @@ function App() {
                 <div><span>住所</span><strong>{selectedSubmission.prefecture}{selectedSubmission.city}</strong></div>
                 <div><span>連絡先</span><strong>{selectedSubmission.phone}</strong></div>
                 <div className="detail-wide"><span>メール</span><strong>{selectedSubmission.email}</strong></div>
+                <div className="detail-wide">
+                  <span>選択設備</span>
+                  {selectedSubmission.selectedProducts && selectedSubmission.selectedProducts.length > 0 ? (
+                    <div className="detail-chip-list">
+                      {selectedSubmission.selectedProducts.map((item) => (
+                        <span key={`${selectedSubmission.id}-${item.productId}`} className="tag">
+                          {item.categoryLabel} / {item.maker} {item.productLabel}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <strong>記録なし</strong>
+                  )}
+                </div>
                 <div className="detail-wide">
                   <span>画像</span>
                   {selectedSubmission.uploadedImages && selectedSubmission.uploadedImages.length > 0 ? (
