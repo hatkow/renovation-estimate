@@ -8,7 +8,7 @@ type Grade = 'standard' | 'premium' | 'luxury'
 type Timing = 'asap' | 'within3Months' | 'within6Months' | 'undecided'
 type DataSource = 'supabase' | 'api' | 'local'
 type MainView = 'simulator' | 'admin'
-type AdminSection = 'dashboard' | 'requests' | 'config'
+type AdminSection = 'dashboard' | 'analytics' | 'requests' | 'config'
 type Status = 'pending' | 'contacted' | 'completed'
 
 type SelectedProductSummary = {
@@ -818,15 +818,36 @@ function App() {
     const productCounts = new Map<string, { label: string; count: number }>()
     const categoryCounts = new Map<string, number>()
     const optionCounts = new Map<string, number>()
+    const prefectureCounts = new Map<string, number>()
+    const segmentCounts = {
+      hot: 0,
+      warm: 0,
+      nurture: 0,
+    }
     let premiumCount = 0
     let urgentCount = 0
     let designCount = 0
 
     for (const submission of safeSubmissions) {
       categoryCounts.set(submission.category, (categoryCounts.get(submission.category) ?? 0) + 1)
+      prefectureCounts.set(submission.prefecture, (prefectureCounts.get(submission.prefecture) ?? 0) + 1)
       if (submission.grade !== 'standard') premiumCount += 1
       if (submission.timing === 'asap' || submission.timing === 'within3Months') urgentCount += 1
       if (submission.options.includes('design')) designCount += 1
+
+      const segmentScore =
+        (submission.grade === 'luxury' ? 2 : submission.grade === 'premium' ? 1 : 0) +
+        (submission.timing === 'asap' ? 2 : submission.timing === 'within3Months' ? 1 : 0) +
+        (submission.options.includes('design') ? 1 : 0) +
+        (submission.options.includes('smart') ? 1 : 0)
+
+      if (segmentScore >= 4) {
+        segmentCounts.hot += 1
+      } else if (segmentScore >= 2) {
+        segmentCounts.warm += 1
+      } else {
+        segmentCounts.nurture += 1
+      }
 
       for (const optionId of submission.options) {
         optionCounts.set(optionId, (optionCounts.get(optionId) ?? 0) + 1)
@@ -867,6 +888,15 @@ function App() {
 
     const topProducts = [...productCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5)
 
+    const topPrefectures = [...prefectureCounts.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        rate: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
     const topOptions = [...optionCounts.entries()]
       .map(([id, count]) => ({
         id,
@@ -906,10 +936,12 @@ function App() {
       total,
       topCategories,
       topProducts,
+      topPrefectures,
       topOptions,
       premiumRate,
       urgentRate,
       designRate,
+      segmentCounts,
       recommendations,
     }
   }, [adminProducts, resolvedCategories, submissions])
@@ -1742,6 +1774,9 @@ function App() {
           <button className={adminSection === 'dashboard' ? 'active' : ''} onClick={() => setAdminSection('dashboard')}>
             ダッシュボード
           </button>
+          <button className={adminSection === 'analytics' ? 'active' : ''} onClick={() => setAdminSection('analytics')}>
+            分析ページ
+          </button>
           <button className={adminSection === 'requests' ? 'active' : ''} onClick={() => setAdminSection('requests')}>
             見積もり依頼一覧
           </button>
@@ -2027,6 +2062,133 @@ function App() {
                   <h3>推奨マーケ施策</h3>
                 </div>
                 <div className="campaign-list">
+                  {marketingInsights.recommendations.map((item, index) => (
+                    <div key={item} className="campaign-item">
+                      <span>{String(index + 1).padStart(2, '0')}</span>
+                      <p>{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
+        {adminSection === 'analytics' ? (
+          <>
+            <header className="admin-header">
+              <div>
+                <h2>マーケティング分析</h2>
+                <p>ユーザーの選択傾向をもとに、広告・導線・提案内容の改善ポイントを確認できます。</p>
+              </div>
+              <div className="admin-header-actions">
+                <span className={`header-status ${dataSourceBadge.tone}`}>{dataSourceBadge.label}</span>
+                <button className="light-button" onClick={downloadMarketingReport}>分析レポート</button>
+              </div>
+            </header>
+            <section className="analytics-grid">
+              <div className="analytics-hero">
+                <div className="analytics-hero-card">
+                  <span>分析対象</span>
+                  <strong>{marketingInsights.total}件</strong>
+                  <p>フォーム送信データから、関心の高いカテゴリと商品を自動集計しています。</p>
+                </div>
+                <div className="analytics-hero-card">
+                  <span>高温リード</span>
+                  <strong>{marketingInsights.segmentCounts.hot}件</strong>
+                  <p>急ぎ案件や上位グレード選択が重なる、優先追客対象のリードです。</p>
+                </div>
+                <div className="analytics-hero-card">
+                  <span>育成対象</span>
+                  <strong>{marketingInsights.segmentCounts.nurture}件</strong>
+                  <p>価格訴求よりも事例や比較資料で育てると反応が上がりやすい層です。</p>
+                </div>
+              </div>
+
+              <div className="analytics-card">
+                <div className="panel-head">
+                  <h3>カテゴリ・商品トレンド</h3>
+                </div>
+                <div className="trend-columns analytics-columns">
+                  <div>
+                    <h4>人気カテゴリ</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topCategories.map((item) => (
+                        <li key={item.id}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>人気商品</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topProducts.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>人気オプション</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topOptions.map((item) => (
+                        <li key={item.id}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="analytics-card">
+                <div className="panel-head">
+                  <h3>地域と検討温度</h3>
+                </div>
+                <div className="analytics-split">
+                  <div>
+                    <h4>流入が多い地域</h4>
+                    <ul className="insight-list">
+                      {marketingInsights.topPrefectures.map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <strong>{item.count}件 / {item.rate}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>リード温度セグメント</h4>
+                    <div className="segment-stack">
+                      <div className="segment-card hot">
+                        <span>HOT</span>
+                        <strong>{marketingInsights.segmentCounts.hot}件</strong>
+                        <p>即日連絡・電話CTA・予約導線を優先</p>
+                      </div>
+                      <div className="segment-card warm">
+                        <span>WARM</span>
+                        <strong>{marketingInsights.segmentCounts.warm}件</strong>
+                        <p>事例紹介と比較表の送付が有効</p>
+                      </div>
+                      <div className="segment-card nurture">
+                        <span>NURTURE</span>
+                        <strong>{marketingInsights.segmentCounts.nurture}件</strong>
+                        <p>メルマガ・施工コラム・価格帯比較で育成</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="analytics-card full-width">
+                <div className="panel-head">
+                  <h3>推奨マーケティングアクション</h3>
+                </div>
+                <div className="campaign-list analytics-campaign-list">
                   {marketingInsights.recommendations.map((item, index) => (
                     <div key={item} className="campaign-item">
                       <span>{String(index + 1).padStart(2, '0')}</span>

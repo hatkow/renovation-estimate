@@ -1164,6 +1164,95 @@
 .marketing-panel { grid-column: span 8; }
 .campaign-panel { grid-column: span 4; }
 
+.analytics-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.analytics-hero {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.analytics-hero-card,
+.analytics-card {
+  padding: 28px;
+  border-radius: 20px;
+  background: var(--white);
+}
+
+.analytics-hero-card {
+  background: linear-gradient(180deg, var(--white), var(--surface-low));
+  box-shadow: var(--shadow);
+}
+
+.analytics-hero-card span,
+.segment-card span {
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.analytics-hero-card strong,
+.segment-card strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--primary);
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.6rem;
+}
+
+.analytics-hero-card p,
+.segment-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.analytics-columns {
+  margin-top: 8px;
+}
+
+.analytics-split {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 24px;
+}
+
+.segment-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.segment-card {
+  padding: 20px;
+  border-radius: 18px;
+}
+
+.segment-card.hot {
+  background: #fff7ed;
+}
+
+.segment-card.warm {
+  background: #eff6ff;
+}
+
+.segment-card.nurture {
+  background: #ecfdf5;
+}
+
+.analytics-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.analytics-campaign-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .chart-tabs {
   display: flex;
   gap: 8px;
