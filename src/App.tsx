@@ -263,8 +263,8 @@ const demoSubmissions: SubmissionRecord[] = [
     city: '世田谷区',
     timing: 'asap',
     notes: '壁付けキッチンから対面へ変更したい。食洗機とカップボードも追加希望。',
-    customerName: 'Eleanor Rigby',
-    email: 'demo1@example.com',
+    customerName: '佐藤 花子',
+    email: 'satou.hanako@example.com',
     phone: '090-1111-1111',
     imageNames: ['kitchen_before_01.jpg', 'kitchen_before_02.jpg'],
     estimatedLow: 1680000,
@@ -283,8 +283,8 @@ const demoSubmissions: SubmissionRecord[] = [
     city: '横浜市',
     timing: 'within3Months',
     notes: '高級感のある浴室にしたい。肩湯や調光照明も検討中。',
-    customerName: 'Julian Marc',
-    email: 'demo2@example.com',
+    customerName: '鈴木 一郎',
+    email: 'suzuki.ichiro@example.com',
     phone: '080-2222-2222',
     imageNames: ['bathroom_before.jpg'],
     estimatedLow: 1980000,
@@ -303,8 +303,8 @@ const demoSubmissions: SubmissionRecord[] = [
     city: '船橋市',
     timing: 'within6Months',
     notes: 'リビングとワークスペースを一体で整えたい。',
-    customerName: 'Sarah Helming',
-    email: 'demo3@example.com',
+    customerName: '高橋 美咲',
+    email: 'takahashi.misaki@example.com',
     phone: '070-3333-3333',
     imageNames: ['living_current.png'],
     estimatedLow: 1280000,
@@ -323,8 +323,8 @@ const demoSubmissions: SubmissionRecord[] = [
     city: '川口市',
     timing: 'asap',
     notes: '壁紙と床も含めて清潔感のある空間にしたい。',
-    customerName: 'Thomas Crane',
-    email: 'demo4@example.com',
+    customerName: '田中 恒一',
+    email: 'tanaka.kouichi@example.com',
     phone: '070-5555-5555',
     imageNames: ['toilet_current.png'],
     estimatedLow: 310000,
@@ -572,6 +572,8 @@ async function saveSimulatorConfigToSupabase(config: SimulatorConfigPayload) {
 }
 
 function App() {
+  const isEmbedded =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === '1'
   const [mainView, setMainView] = useState<MainView>('simulator')
   const [adminSection, setAdminSection] = useState<AdminSection>('requests')
   const [form, setForm] = useState<EstimateForm>(initialForm)
@@ -1024,7 +1026,8 @@ function App() {
   }
 
   return mainView === 'simulator' ? (
-    <div className="editorial-app">
+    <div className={`editorial-app ${isEmbedded ? 'embed-mode' : ''}`}>
+      {!isEmbedded ? (
       <nav className="top-nav">
         <div className="brand">ArtisanEstimator</div>
         <div className="top-nav-links">
@@ -1041,8 +1044,9 @@ function App() {
           </button>
         </div>
       </nav>
+      ) : null}
 
-      <main className="sim-main">
+      <main className={`sim-main ${isEmbedded ? 'sim-main-embed' : ''}`}>
         <header className="sim-hero">
           <span className="kicker">高品質な見積もり体験</span>
           <h1>
@@ -1329,7 +1333,8 @@ function App() {
       ) : null}
     </div>
   ) : (
-    <div className="admin-app">
+    <div className={`admin-app ${isEmbedded ? 'embed-mode' : ''}`}>
+      {!isEmbedded ? (
       <aside className="admin-sidebar">
         <div className="sidebar-brand">
           <h1>ArtisanEstimator</h1>
@@ -1362,7 +1367,8 @@ function App() {
           </div>
         </div>
       </aside>
-      <main className="admin-main">
+      ) : null}
+      <main className={`admin-main ${isEmbedded ? 'admin-main-full' : ''}`}>
         {adminSection === 'requests' ? (
           <>
             <header className="admin-header">

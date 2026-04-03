@@ -89,6 +89,14 @@ Supabase のテーブル・Storage・Policy 作成SQLは [supabase/schema.sql](C
 3. サイトごとにAPIキーやテーマ設定を持たせる
 4. 将来的にSaaS化し、テナント単位で管理する
 
+埋め込み用の軽量表示モード:
+
+```text
+https://renovation-estimate.vercel.app/?embed=1
+```
+
+`?embed=1` を付けると、ヘッダーや管理サイドバーを省いた軽量表示になります。
+
 ## デプロイ
 
 本番サーバーへの配置手順は [DEPLOY.md](C:\codex\renovation-estimate\DEPLOY.md) にまとめています。

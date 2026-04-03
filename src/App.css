@@ -23,6 +23,10 @@
   color: var(--text);
 }
 
+.embed-mode {
+  background: transparent;
+}
+
 .top-nav {
   position: sticky;
   top: 0;
@@ -132,6 +136,11 @@
   max-width: 1440px;
   margin: 0 auto;
   padding: 36px 32px 80px;
+}
+
+.sim-main.sim-main-embed {
+  max-width: 1280px;
+  padding-top: 20px;
 }
 
 .kicker,
@@ -921,6 +930,10 @@
   flex: 1;
   margin-left: 288px;
   padding: 48px;
+}
+
+.admin-main.admin-main-full {
+  margin-left: 0;
 }
 
 .filter-panel,
