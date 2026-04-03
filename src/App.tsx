@@ -97,6 +97,13 @@ type AdminProduct = EquipmentItem & {
   isVisible?: boolean
 }
 
+type ReportSettings = {
+  companyName: string
+  logoUrl: string
+  presenterName: string
+  summaryComment: string
+}
+
 const STORAGE_KEY = 'renovation-estimate-submissions'
 const CONFIG_STORAGE_KEY = 'renovation-estimate-config'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -137,6 +144,7 @@ type SimulatorConfigPayload = {
   pricingRows: PricingRow[]
   adminCategories: AdminCategoryCard[]
   adminProducts: AdminProduct[]
+  reportSettings: ReportSettings
 }
 
 type SupabaseConfigRow = {
@@ -429,6 +437,14 @@ const defaultAdminProducts: AdminProduct[] = Object.entries(equipmentCatalog).fl
     categoryId: categoryId as CategoryId,
   })),
 )
+
+const defaultReportSettings: ReportSettings = {
+  companyName: '株式会社リフォーム企画',
+  logoUrl: '',
+  presenterName: '営業企画室',
+  summaryComment:
+    '今回の分析では、キッチン・浴室まわりの需要と、デザイン提案を含む高単価志向の傾向が見えています。広告訴求と追客導線の最適化にご活用ください。',
+}
 
 function isFixedCategoryId(id: string): id is CategoryId {
   return categoryOrder.includes(id as CategoryId)
@@ -759,6 +775,7 @@ function App() {
   })
   const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(defaultAdminCategories)
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>(defaultAdminProducts)
+  const [reportSettings, setReportSettings] = useState<ReportSettings>(defaultReportSettings)
   const [requestPage, setRequestPage] = useState(1)
   const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string; lostReason: string }>({
     status: 'pending',
@@ -822,10 +839,12 @@ function App() {
           setPricingRows(row.config_value.pricingRows ?? defaultPricingRows)
           setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
           setAdminProducts(row.config_value.adminProducts ?? defaultAdminProducts)
+          setReportSettings(row.config_value.reportSettings ?? defaultReportSettings)
           writeStoredConfig({
             pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
             adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
             adminProducts: row.config_value.adminProducts ?? defaultAdminProducts,
+            reportSettings: row.config_value.reportSettings ?? defaultReportSettings,
           })
           return
         }
@@ -839,6 +858,7 @@ function App() {
         setPricingRows(storedConfig.pricingRows ?? defaultPricingRows)
         setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
         setAdminProducts(storedConfig.adminProducts ?? defaultAdminProducts)
+        setReportSettings(storedConfig.reportSettings ?? defaultReportSettings)
       }
     }
 
@@ -1232,6 +1252,7 @@ function App() {
       pricingRows,
       adminCategories,
       adminProducts,
+      reportSettings,
     })
   }
 
@@ -1240,10 +1261,12 @@ function App() {
       pricingRows: defaultPricingRows,
       adminCategories: defaultAdminCategories,
       adminProducts: defaultAdminProducts,
+      reportSettings: defaultReportSettings,
     }
     setPricingRows(defaultPricingRows)
     setAdminCategories(defaultAdminCategories)
     setAdminProducts(defaultAdminProducts)
+    setReportSettings(defaultReportSettings)
     setCategoryDraft({ ...defaultAdminCategories[0] })
     persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
@@ -1445,6 +1468,9 @@ function App() {
   function downloadMarketingReport() {
     const lines = [
       'マーケティング分析レポート',
+      `会社名: ${reportSettings.companyName}`,
+      `担当: ${reportSettings.presenterName}`,
+      `作成日: ${new Date().toLocaleDateString('ja-JP')}`,
       `総送信件数: ${marketingInsights.total}`,
       `プレミアム志向率: ${marketingInsights.premiumRate}%`,
       `早期検討率: ${marketingInsights.urgentRate}%`,
@@ -1473,6 +1499,9 @@ function App() {
       '',
       '推奨施策',
       ...marketingInsights.recommendations.map((item, index) => `${index + 1}. ${item}`),
+      '',
+      'コメント',
+      reportSettings.summaryComment,
     ]
     downloadTextFile(`marketing-report-${Date.now()}.txt`, lines.join('\n'))
   }
@@ -2467,29 +2496,57 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <button className="light-button" onClick={() => setAdminSection('analytics')}>分析ページへ戻る</button>
+                <button className="light-button" onClick={() => persistSimulatorConfig({ pricingRows, adminCategories, adminProducts, reportSettings }, 'レポート設定を保存しました。')}>設定を保存</button>
                 <button className="nav-button primary" onClick={downloadMarketingReport}>この内容を出力</button>
               </div>
             </header>
             <section className="report-preview">
+              <div className="report-settings-card">
+                <div className="panel-head">
+                  <div>
+                    <h3>レポート設定</h3>
+                    <p>会社情報やコメントを調整して、営業資料として使いやすくします。</p>
+                  </div>
+                </div>
+                <div className="controls-grid controls-grid-wide">
+                  <label className="field">
+                    <span>会社名</span>
+                    <input value={reportSettings.companyName} onChange={(event) => setReportSettings((current) => ({ ...current, companyName: event.target.value }))} />
+                  </label>
+                  <label className="field">
+                    <span>担当名</span>
+                    <input value={reportSettings.presenterName} onChange={(event) => setReportSettings((current) => ({ ...current, presenterName: event.target.value }))} />
+                  </label>
+                  <label className="field field-wide">
+                    <span>ロゴURL</span>
+                    <input value={reportSettings.logoUrl} onChange={(event) => setReportSettings((current) => ({ ...current, logoUrl: event.target.value }))} placeholder="https://..." />
+                  </label>
+                  <label className="field field-wide">
+                    <span>コメント</span>
+                    <textarea rows={3} value={reportSettings.summaryComment} onChange={(event) => setReportSettings((current) => ({ ...current, summaryComment: event.target.value }))} />
+                  </label>
+                </div>
+              </div>
               <div className="report-sheet">
                 <div className="report-cover">
                   <div>
+                    {reportSettings.logoUrl ? <img className="report-logo" src={reportSettings.logoUrl} alt={reportSettings.companyName} /> : null}
                     <span className="kicker">Marketing Report</span>
                     <h3>リフォーム見積もり分析レポート</h3>
-                    <p>送信された見積もりデータから、集客改善と営業改善につながる示唆を整理しています。</p>
+                    <p>{reportSettings.companyName} 向けに、送信された見積もりデータから集客改善と営業改善につながる示唆を整理しています。</p>
                   </div>
                   <div className="report-cover-metrics">
                     <div>
+                      <span>作成日</span>
+                      <strong>{new Date().toLocaleDateString('ja-JP')}</strong>
+                    </div>
+                    <div>
+                      <span>担当</span>
+                      <strong>{reportSettings.presenterName}</strong>
+                    </div>
+                    <div>
                       <span>分析件数</span>
                       <strong>{marketingInsights.total}件</strong>
-                    </div>
-                    <div>
-                      <span>プレミアム志向</span>
-                      <strong>{marketingInsights.premiumRate}%</strong>
-                    </div>
-                    <div>
-                      <span>早期検討率</span>
-                      <strong>{marketingInsights.urgentRate}%</strong>
                     </div>
                   </div>
                 </div>
@@ -2498,6 +2555,14 @@ function App() {
                   <section className="report-block">
                     <h4>主要サマリー</h4>
                     <div className="report-stat-grid">
+                      <div className="report-stat">
+                        <span>プレミアム志向</span>
+                        <strong>{marketingInsights.premiumRate}%</strong>
+                      </div>
+                      <div className="report-stat">
+                        <span>早期検討率</span>
+                        <strong>{marketingInsights.urgentRate}%</strong>
+                      </div>
                       <div className="report-stat">
                         <span>提案型ニーズ</span>
                         <strong>{marketingInsights.designRate}%</strong>
@@ -2602,6 +2667,13 @@ function App() {
                           <p>{item}</p>
                         </div>
                       ))}
+                    </div>
+                  </section>
+
+                  <section className="report-block full">
+                    <h4>担当コメント</h4>
+                    <div className="report-comment">
+                      <p>{reportSettings.summaryComment}</p>
                     </div>
                   </section>
                 </div>

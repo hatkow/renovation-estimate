@@ -1260,6 +1260,14 @@
 
 .report-preview {
   display: grid;
+  gap: 20px;
+}
+
+.report-settings-card {
+  padding: 28px;
+  border-radius: 20px;
+  background: var(--white);
+  box-shadow: var(--shadow);
 }
 
 .report-sheet {
@@ -1290,6 +1298,14 @@
   margin: 10px 0 14px;
   font-size: 2.2rem;
   letter-spacing: -0.04em;
+}
+
+.report-logo {
+  display: block;
+  max-width: 180px;
+  max-height: 56px;
+  margin-bottom: 14px;
+  object-fit: contain;
 }
 
 .report-cover p {
@@ -1396,6 +1412,18 @@
 .report-action-item p {
   margin: 0;
   line-height: 1.7;
+}
+
+.report-comment {
+  padding: 20px 22px;
+  border-radius: 18px;
+  background: var(--surface-low);
+}
+
+.report-comment p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.85;
 }
 
 .chart-tabs {
