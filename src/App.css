@@ -1426,6 +1426,52 @@
   line-height: 1.85;
 }
 
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .admin-sidebar,
+  .top-nav,
+  .admin-header,
+  .report-settings-card,
+  .cta-overlay {
+    display: none !important;
+  }
+
+  .admin-main,
+  .admin-main.admin-main-full {
+    margin-left: 0;
+    padding: 0;
+  }
+
+  .report-preview {
+    display: block;
+  }
+
+  .report-sheet {
+    padding: 18mm 14mm;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .report-block,
+  .report-cover-metrics > div,
+  .report-stat,
+  .report-list li,
+  .report-action-item,
+  .report-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .report-block-grid {
+    gap: 14px;
+  }
+}
+
 .chart-tabs {
   display: flex;
   gap: 8px;

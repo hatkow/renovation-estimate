@@ -2497,6 +2497,7 @@ function App() {
               <div className="admin-header-actions">
                 <button className="light-button" onClick={() => setAdminSection('analytics')}>分析ページへ戻る</button>
                 <button className="light-button" onClick={() => persistSimulatorConfig({ pricingRows, adminCategories, adminProducts, reportSettings }, 'レポート設定を保存しました。')}>設定を保存</button>
+                <button className="light-button" onClick={() => window.print()}>印刷する</button>
                 <button className="nav-button primary" onClick={downloadMarketingReport}>この内容を出力</button>
               </div>
             </header>
