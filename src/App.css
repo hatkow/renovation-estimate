@@ -14,6 +14,13 @@
   --muted: #44474e;
   --white: #ffffff;
   --shadow: 0 20px 40px rgba(0, 32, 70, 0.06);
+  --radius-scale: 1;
+  --font-family-custom: 'Manrope', 'Noto Sans JP', sans-serif;
+}
+
+body,
+.theme-shell {
+  font-family: var(--font-family-custom);
 }
 
 .editorial-app,
@@ -88,7 +95,7 @@
 .download-button,
 .sidebar-cta {
   padding: 12px 18px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--radius-scale));
   font-weight: 700;
 }
 
@@ -233,7 +240,7 @@
 .health-panel,
 .config-card,
 .version-card {
-  border-radius: 18px;
+  border-radius: calc(18px * var(--radius-scale));
   box-shadow: var(--shadow);
 }
 
@@ -469,6 +476,11 @@
   padding: 14px 16px;
   color: var(--text);
   font: inherit;
+}
+
+.field input[type='color'] {
+  min-height: 56px;
+  padding: 8px;
 }
 
 .field input[type='range'] {
@@ -822,6 +834,11 @@
 .link-button.dark {
   color: var(--primary-soft);
   border-bottom: 0;
+}
+
+.theme-cta-inline {
+  display: inline-flex;
+  margin-top: 10px;
 }
 
 .cta-overlay {
@@ -1270,9 +1287,19 @@
   box-shadow: var(--shadow);
 }
 
+.product-card,
+.category-admin-card,
+.product-admin-row,
+.analytics-card,
+.analytics-hero-card,
+.report-block,
+.report-settings-card {
+  border-radius: calc(18px * var(--radius-scale));
+}
+
 .report-sheet {
   padding: 40px;
-  border-radius: 28px;
+  border-radius: calc(28px * var(--radius-scale));
   background: linear-gradient(180deg, #ffffff, #f8f9fa);
   box-shadow: 0 24px 60px rgba(0, 32, 70, 0.08);
 }
@@ -1737,6 +1764,10 @@
 
 .config-inline-actions {
   margin-top: 16px;
+}
+
+.theme-form-grid {
+  margin-top: 18px;
 }
 
 .product-admin-list {

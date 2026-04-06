@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent, CSSProperties, FormEvent } from 'react'
 import './App.css'
 import { isSupabaseConfigured, supabase, supabaseBucket } from './lib/supabase'
 
@@ -104,6 +104,26 @@ type ReportSettings = {
   summaryComment: string
 }
 
+type ThemePreset = 'editorial' | 'luxury' | 'natural' | 'campaign'
+
+type ThemeSettings = {
+  preset: ThemePreset
+  brandName: string
+  primaryColor: string
+  primarySoftColor: string
+  secondaryColor: string
+  tertiaryColor: string
+  tertiarySoftColor: string
+  surfaceColor: string
+  surfaceLowColor: string
+  textColor: string
+  mutedColor: string
+  radiusScale: number
+  fontFamily: string
+  ctaLabel: string
+  customCss: string
+}
+
 const STORAGE_KEY = 'renovation-estimate-submissions'
 const CONFIG_STORAGE_KEY = 'renovation-estimate-config'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -145,6 +165,7 @@ type SimulatorConfigPayload = {
   adminCategories: AdminCategoryCard[]
   adminProducts: AdminProduct[]
   reportSettings: ReportSettings
+  themeSettings: ThemeSettings
 }
 
 type SupabaseConfigRow = {
@@ -444,6 +465,75 @@ const defaultReportSettings: ReportSettings = {
   presenterName: '営業企画室',
   summaryComment:
     '今回の分析では、キッチン・浴室まわりの需要と、デザイン提案を含む高単価志向の傾向が見えています。広告訴求と追客導線の最適化にご活用ください。',
+}
+
+const themePresetMap: Record<
+  ThemePreset,
+  Omit<ThemeSettings, 'brandName' | 'ctaLabel' | 'customCss'>
+> = {
+  editorial: {
+    preset: 'editorial',
+    primaryColor: '#002046',
+    primarySoftColor: '#1b365d',
+    secondaryColor: '#48626e',
+    tertiaryColor: '#341b00',
+    tertiarySoftColor: '#eebd8e',
+    surfaceColor: '#f8f9fa',
+    surfaceLowColor: '#f3f4f5',
+    textColor: '#191c1d',
+    mutedColor: '#44474e',
+    radiusScale: 1,
+    fontFamily: "'Manrope', 'Noto Sans JP', sans-serif",
+  },
+  luxury: {
+    preset: 'luxury',
+    primaryColor: '#1d1b16',
+    primarySoftColor: '#4a4033',
+    secondaryColor: '#6c5b4b',
+    tertiaryColor: '#8b6f47',
+    tertiarySoftColor: '#d8c2a3',
+    surfaceColor: '#f7f4ef',
+    surfaceLowColor: '#efe9df',
+    textColor: '#221f1a',
+    mutedColor: '#655a4c',
+    radiusScale: 1.15,
+    fontFamily: "'Cormorant Garamond', 'Noto Serif JP', serif",
+  },
+  natural: {
+    preset: 'natural',
+    primaryColor: '#335c4b',
+    primarySoftColor: '#4b7a66',
+    secondaryColor: '#809d8f',
+    tertiaryColor: '#7a6142',
+    tertiarySoftColor: '#d9c9b4',
+    surfaceColor: '#f7faf7',
+    surfaceLowColor: '#edf3ed',
+    textColor: '#1e2c25',
+    mutedColor: '#587066',
+    radiusScale: 1.05,
+    fontFamily: "'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif",
+  },
+  campaign: {
+    preset: 'campaign',
+    primaryColor: '#0d3b66',
+    primarySoftColor: '#145da0',
+    secondaryColor: '#1f7a8c',
+    tertiaryColor: '#c94c4c',
+    tertiarySoftColor: '#ffd6d6',
+    surfaceColor: '#f8fbff',
+    surfaceLowColor: '#eaf2fb',
+    textColor: '#14202b',
+    mutedColor: '#50606f',
+    radiusScale: 0.92,
+    fontFamily: "'BIZ UDPGothic', 'Noto Sans JP', sans-serif",
+  },
+}
+
+const defaultThemeSettings: ThemeSettings = {
+  brandName: 'ArtisanEstimator',
+  ctaLabel: '無料相談へ進む',
+  customCss: '',
+  ...themePresetMap.editorial,
 }
 
 function isFixedCategoryId(id: string): id is CategoryId {
@@ -776,6 +866,7 @@ function App() {
   const [adminCategories, setAdminCategories] = useState<AdminCategoryCard[]>(defaultAdminCategories)
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>(defaultAdminProducts)
   const [reportSettings, setReportSettings] = useState<ReportSettings>(defaultReportSettings)
+  const [themeSettings, setThemeSettings] = useState<ThemeSettings>(defaultThemeSettings)
   const [requestPage, setRequestPage] = useState(1)
   const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string; lostReason: string }>({
     status: 'pending',
@@ -798,6 +889,22 @@ function App() {
     ...defaultAdminCategories[0],
   })
   const dataSourceBadge = getDataSourceBadge(dataSource)
+  const themeStyle = useMemo(
+    () => ({
+      '--primary': themeSettings.primaryColor,
+      '--primary-soft': themeSettings.primarySoftColor,
+      '--secondary': themeSettings.secondaryColor,
+      '--tertiary': themeSettings.tertiaryColor,
+      '--tertiary-soft': themeSettings.tertiarySoftColor,
+      '--surface': themeSettings.surfaceColor,
+      '--surface-low': themeSettings.surfaceLowColor,
+      '--text': themeSettings.textColor,
+      '--muted': themeSettings.mutedColor,
+      '--radius-scale': `${themeSettings.radiusScale}`,
+      '--font-family-custom': themeSettings.fontFamily,
+    }) as CSSProperties,
+    [themeSettings],
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -840,11 +947,13 @@ function App() {
           setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
           setAdminProducts(row.config_value.adminProducts ?? defaultAdminProducts)
           setReportSettings(row.config_value.reportSettings ?? defaultReportSettings)
+          setThemeSettings(row.config_value.themeSettings ?? defaultThemeSettings)
           writeStoredConfig({
             pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
             adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
             adminProducts: row.config_value.adminProducts ?? defaultAdminProducts,
             reportSettings: row.config_value.reportSettings ?? defaultReportSettings,
+            themeSettings: row.config_value.themeSettings ?? defaultThemeSettings,
           })
           return
         }
@@ -859,6 +968,7 @@ function App() {
         setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
         setAdminProducts(storedConfig.adminProducts ?? defaultAdminProducts)
         setReportSettings(storedConfig.reportSettings ?? defaultReportSettings)
+        setThemeSettings(storedConfig.themeSettings ?? defaultThemeSettings)
       }
     }
 
@@ -1253,6 +1363,7 @@ function App() {
       adminCategories,
       adminProducts,
       reportSettings,
+      themeSettings,
     })
   }
 
@@ -1262,11 +1373,13 @@ function App() {
       adminCategories: defaultAdminCategories,
       adminProducts: defaultAdminProducts,
       reportSettings: defaultReportSettings,
+      themeSettings: defaultThemeSettings,
     }
     setPricingRows(defaultPricingRows)
     setAdminCategories(defaultAdminCategories)
     setAdminProducts(defaultAdminProducts)
     setReportSettings(defaultReportSettings)
+    setThemeSettings(defaultThemeSettings)
     setCategoryDraft({ ...defaultAdminCategories[0] })
     persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
@@ -1321,6 +1434,15 @@ function App() {
   function resetCategoryDraft() {
     setCategoryDraft({ ...defaultAdminCategories[0] })
     showAdminMessage('カテゴリ編集内容をリセットしました。')
+  }
+
+  function applyThemePreset(preset: ThemePreset) {
+    setThemeSettings((current) => ({
+      ...current,
+      ...themePresetMap[preset],
+      preset,
+    }))
+    showAdminMessage('テーマテンプレートを切り替えました。変更を反映で保存できます。')
   }
 
   async function addProductCard() {
@@ -1651,10 +1773,11 @@ function App() {
   }
 
   return mainView === 'simulator' ? (
-    <div className={`editorial-app ${isEmbedded ? 'embed-mode' : ''}`}>
+    <div className={`editorial-app theme-shell ${isEmbedded ? 'embed-mode' : ''}`} style={themeStyle}>
+      {themeSettings.customCss.trim() ? <style>{themeSettings.customCss}</style> : null}
       {!isEmbedded ? (
       <nav className="top-nav">
-        <div className="brand">ArtisanEstimator</div>
+        <div className="brand">{themeSettings.brandName}</div>
         <div className="top-nav-links">
           <button className="top-link is-active" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Simulator</button>
           <button className="top-link" onClick={() => document.getElementById('catalog-start')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Portfolio</button>
@@ -1944,7 +2067,7 @@ function App() {
               <div>
                 <h4>専門スタッフに相談しますか？</h4>
                 <p>見積もり後に、プロジェクト担当へそのまま相談できる導線です。</p>
-                <button className="link-button" onClick={() => openConsultation('reserve')}>無料相談へ進む</button>
+                <button className="link-button theme-cta-inline" onClick={() => openConsultation('reserve')}>{themeSettings.ctaLabel}</button>
               </div>
             </div>
           </aside>
@@ -1968,11 +2091,12 @@ function App() {
       ) : null}
     </div>
   ) : (
-    <div className={`admin-app ${isEmbedded ? 'embed-mode' : ''}`}>
+    <div className={`admin-app theme-shell ${isEmbedded ? 'embed-mode' : ''}`} style={themeStyle}>
+      {themeSettings.customCss.trim() ? <style>{themeSettings.customCss}</style> : null}
       {!isEmbedded ? (
       <aside className="admin-sidebar">
         <div className="sidebar-brand">
-          <h1>ArtisanEstimator</h1>
+          <h1>{themeSettings.brandName}</h1>
           <p>見積もり管理センター</p>
         </div>
         <div className="sidebar-profile">
@@ -2496,7 +2620,7 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <button className="light-button" onClick={() => setAdminSection('analytics')}>分析ページへ戻る</button>
-                <button className="light-button" onClick={() => persistSimulatorConfig({ pricingRows, adminCategories, adminProducts, reportSettings }, 'レポート設定を保存しました。')}>設定を保存</button>
+                <button className="light-button" onClick={() => persistSimulatorConfig({ pricingRows, adminCategories, adminProducts, reportSettings, themeSettings }, 'レポート設定を保存しました。')}>設定を保存</button>
                 <button className="light-button" onClick={() => window.print()}>印刷する</button>
                 <button className="nav-button primary" onClick={downloadMarketingReport}>この内容を出力</button>
               </div>
@@ -2696,6 +2820,63 @@ function App() {
             </header>
             <section className="config-grid">
               <div className="config-main">
+                <div className="config-card">
+                  <div className="panel-head">
+                    <div>
+                      <h3>デザインテーマ</h3>
+                      <p>クライアントごとにテンプレート、配色、フォント、CTA文言を変えられます。</p>
+                    </div>
+                  </div>
+                  <div className="controls-grid controls-grid-wide theme-form-grid">
+                    <label className="field">
+                      <span>テンプレート</span>
+                      <select value={themeSettings.preset} onChange={(event) => applyThemePreset(event.target.value as ThemePreset)}>
+                        <option value="editorial">モダン</option>
+                        <option value="luxury">高級感</option>
+                        <option value="natural">ナチュラル</option>
+                        <option value="campaign">キャンペーン訴求</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>ブランド名</span>
+                      <input value={themeSettings.brandName} onChange={(event) => setThemeSettings((current) => ({ ...current, brandName: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>メインカラー</span>
+                      <input type="color" value={themeSettings.primaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, primaryColor: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>サブカラー</span>
+                      <input type="color" value={themeSettings.secondaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, secondaryColor: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>背景色</span>
+                      <input type="color" value={themeSettings.surfaceColor} onChange={(event) => setThemeSettings((current) => ({ ...current, surfaceColor: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>アクセント色</span>
+                      <input type="color" value={themeSettings.tertiaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, tertiaryColor: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>角丸スケール</span>
+                      <input type="range" min="0.8" max="1.3" step="0.05" value={themeSettings.radiusScale} onChange={(event) => setThemeSettings((current) => ({ ...current, radiusScale: Number(event.target.value) }))} />
+                      <small>{themeSettings.radiusScale.toFixed(2)}</small>
+                    </label>
+                    <label className="field">
+                      <span>フォント指定</span>
+                      <input value={themeSettings.fontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, fontFamily: event.target.value }))} />
+                    </label>
+                    <label className="field field-wide">
+                      <span>CTA文言</span>
+                      <input value={themeSettings.ctaLabel} onChange={(event) => setThemeSettings((current) => ({ ...current, ctaLabel: event.target.value }))} />
+                    </label>
+                    <label className="field field-wide">
+                      <span>追加CSS</span>
+                      <textarea rows={6} value={themeSettings.customCss} onChange={(event) => setThemeSettings((current) => ({ ...current, customCss: event.target.value }))} placeholder=".theme-shell .product-card { border-width: 2px; }" />
+                      <small>`.theme-shell` 配下にだけ効く想定で入力してください。</small>
+                    </label>
+                  </div>
+                </div>
                 <div className="config-card">
                   <div className="panel-head">
                     <div>
