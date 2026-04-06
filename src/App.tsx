@@ -2859,7 +2859,7 @@ function App() {
                     </label>
                     <label className="field">
                       <span>角丸スケール</span>
-                      <input type="range" min="0.8" max="1.3" step="0.05" value={themeSettings.radiusScale} onChange={(event) => setThemeSettings((current) => ({ ...current, radiusScale: Number(event.target.value) }))} />
+                      <input type="range" min="0" max="1.3" step="0.05" value={themeSettings.radiusScale} onChange={(event) => setThemeSettings((current) => ({ ...current, radiusScale: Number(event.target.value) }))} />
                       <small>{themeSettings.radiusScale.toFixed(2)}</small>
                     </label>
                     <label className="field">
