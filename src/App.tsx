@@ -119,7 +119,8 @@ type ThemeSettings = {
   textColor: string
   mutedColor: string
   radiusScale: number
-  fontFamily: string
+  bodyFontFamily: string
+  headingFontFamily: string
   ctaLabel: string
   customCss: string
 }
@@ -483,7 +484,8 @@ const themePresetMap: Record<
     textColor: '#191c1d',
     mutedColor: '#44474e',
     radiusScale: 1,
-    fontFamily: "'Manrope', 'Noto Sans JP', sans-serif",
+    bodyFontFamily: "'Noto Sans JP', sans-serif",
+    headingFontFamily: "'Manrope', 'Noto Sans JP', sans-serif",
   },
   luxury: {
     preset: 'luxury',
@@ -497,7 +499,8 @@ const themePresetMap: Record<
     textColor: '#221f1a',
     mutedColor: '#655a4c',
     radiusScale: 1.15,
-    fontFamily: "'Cormorant Garamond', 'Noto Serif JP', serif",
+    bodyFontFamily: "'Noto Serif JP', serif",
+    headingFontFamily: "'Cormorant Garamond', 'Noto Serif JP', serif",
   },
   natural: {
     preset: 'natural',
@@ -511,7 +514,8 @@ const themePresetMap: Record<
     textColor: '#1e2c25',
     mutedColor: '#587066',
     radiusScale: 1.05,
-    fontFamily: "'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif",
+    bodyFontFamily: "'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif",
+    headingFontFamily: "'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif",
   },
   campaign: {
     preset: 'campaign',
@@ -525,7 +529,8 @@ const themePresetMap: Record<
     textColor: '#14202b',
     mutedColor: '#50606f',
     radiusScale: 0.92,
-    fontFamily: "'BIZ UDPGothic', 'Noto Sans JP', sans-serif",
+    bodyFontFamily: "'BIZ UDPGothic', 'Noto Sans JP', sans-serif",
+    headingFontFamily: "'BIZ UDPGothic', 'Noto Sans JP', sans-serif",
   },
 }
 
@@ -538,6 +543,18 @@ const defaultThemeSettings: ThemeSettings = {
 
 function isFixedCategoryId(id: string): id is CategoryId {
   return categoryOrder.includes(id as CategoryId)
+}
+
+function normalizeThemeSettings(settings?: Partial<ThemeSettings> & { fontFamily?: string } | null): ThemeSettings {
+  const bodyFontFamily = settings?.bodyFontFamily ?? settings?.fontFamily ?? defaultThemeSettings.bodyFontFamily
+  const headingFontFamily = settings?.headingFontFamily ?? settings?.fontFamily ?? defaultThemeSettings.headingFontFamily
+
+  return {
+    ...defaultThemeSettings,
+    ...settings,
+    bodyFontFamily,
+    headingFontFamily,
+  }
 }
 
 const numberFormatter = new Intl.NumberFormat('ja-JP')
@@ -901,7 +918,8 @@ function App() {
       '--text': themeSettings.textColor,
       '--muted': themeSettings.mutedColor,
       '--radius-scale': `${themeSettings.radiusScale}`,
-      '--font-family-custom': themeSettings.fontFamily,
+      '--font-family-body': themeSettings.bodyFontFamily,
+      '--font-family-heading': themeSettings.headingFontFamily,
     }) as CSSProperties,
     [themeSettings],
   )
@@ -947,13 +965,13 @@ function App() {
           setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
           setAdminProducts(row.config_value.adminProducts ?? defaultAdminProducts)
           setReportSettings(row.config_value.reportSettings ?? defaultReportSettings)
-          setThemeSettings(row.config_value.themeSettings ?? defaultThemeSettings)
+          setThemeSettings(normalizeThemeSettings(row.config_value.themeSettings))
           writeStoredConfig({
             pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
             adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
             adminProducts: row.config_value.adminProducts ?? defaultAdminProducts,
             reportSettings: row.config_value.reportSettings ?? defaultReportSettings,
-            themeSettings: row.config_value.themeSettings ?? defaultThemeSettings,
+            themeSettings: normalizeThemeSettings(row.config_value.themeSettings),
           })
           return
         }
@@ -968,7 +986,7 @@ function App() {
         setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
         setAdminProducts(storedConfig.adminProducts ?? defaultAdminProducts)
         setReportSettings(storedConfig.reportSettings ?? defaultReportSettings)
-        setThemeSettings(storedConfig.themeSettings ?? defaultThemeSettings)
+        setThemeSettings(normalizeThemeSettings(storedConfig.themeSettings))
       }
     }
 
@@ -2863,8 +2881,12 @@ function App() {
                       <small>{themeSettings.radiusScale.toFixed(2)}</small>
                     </label>
                     <label className="field">
-                      <span>フォント指定</span>
-                      <input value={themeSettings.fontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, fontFamily: event.target.value }))} />
+                      <span>本文フォント</span>
+                      <input value={themeSettings.bodyFontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, bodyFontFamily: event.target.value }))} />
+                    </label>
+                    <label className="field">
+                      <span>見出しフォント</span>
+                      <input value={themeSettings.headingFontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, headingFontFamily: event.target.value }))} />
                     </label>
                     <label className="field field-wide">
                       <span>CTA文言</span>

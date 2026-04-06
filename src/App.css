@@ -15,12 +15,13 @@
   --white: #ffffff;
   --shadow: 0 20px 40px rgba(0, 32, 70, 0.06);
   --radius-scale: 1;
-  --font-family-custom: 'Manrope', 'Noto Sans JP', sans-serif;
+  --font-family-body: 'Noto Sans JP', sans-serif;
+  --font-family-heading: 'Manrope', 'Noto Sans JP', sans-serif;
 }
 
 body,
 .theme-shell {
-  font-family: var(--font-family-custom);
+  font-family: var(--font-family-body);
 }
 
 .editorial-app,
@@ -28,6 +29,41 @@ body,
   min-height: 100vh;
   background: var(--surface);
   color: var(--text);
+}
+
+.brand,
+.sidebar-brand h1,
+.top-link,
+.sim-hero h1,
+.admin-header h2,
+.section-head h2,
+.panel-head h3,
+.preview-card h3,
+.area-content h3,
+.package-card strong,
+.option-panel strong,
+.metric-panel strong,
+.stat-card strong,
+.preview-total strong,
+.pricing-label strong,
+.category-admin-card h4,
+.health-group strong,
+.product-card strong,
+.selection-summary strong,
+.product-price,
+.price-row strong,
+.expert-card h4,
+.mini-metric strong,
+.trend-columns h4,
+.insight-list li strong,
+.campaign-item span,
+.report-cover h3,
+.report-block h4,
+.report-stat strong,
+.report-list strong,
+.report-cover-metrics strong,
+.report-action-item span {
+  font-family: var(--font-family-heading);
 }
 
 .embed-mode {
