@@ -97,6 +97,20 @@ https://renovation-estimate.vercel.app/?embed=1
 
 `?embed=1` を付けると、ヘッダーや管理サイドバーを省いた軽量表示になります。
 
+貼り付け用の基本タグ:
+
+```html
+<iframe
+  src="https://renovation-estimate.vercel.app/?embed=1"
+  width="100%"
+  height="1800"
+  style="border:0;"
+  loading="lazy"
+></iframe>
+```
+
+WordPress では「カスタムHTML」ブロックに貼り付けるのが最短です。
+
 広告やSNSの分析をしたい場合は、URL に UTM を付けて流入元を保存できます。
 
 ```text

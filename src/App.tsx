@@ -654,6 +654,39 @@ function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^\w.-]/g, '_')
 }
 
+function parseCsvRow(line: string) {
+  const cells: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"'
+      index += 1
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes
+      continue
+    }
+
+    if (char === ',' && !inQuotes) {
+      cells.push(current.trim())
+      current = ''
+      continue
+    }
+
+    current += char
+  }
+
+  cells.push(current.trim())
+  return cells
+}
+
 function mapSupabaseRow(row: SupabaseSubmissionRow): SubmissionRecord {
   return {
     id: row.id,
@@ -1644,6 +1677,95 @@ function App() {
       reportSettings.summaryComment,
     ]
     downloadTextFile(`marketing-report-${Date.now()}.txt`, lines.join('\n'))
+  }
+
+  function downloadProductCsvTemplate() {
+    const rows = [
+      ['categoryId', 'maker', 'name', 'subtitle', 'price', 'imageUrl', 'badge', 'isVisible'],
+      ['kitchen', 'LIXIL', 'アレスタ', '間口2550mm / 工事費込み', '770000', 'https://example.com/kitchen.jpg', '人気', 'true'],
+      ['bath', 'TOTO', 'サザナ', 'ほっカラリ床', '200000', '', 'おすすめ', 'true'],
+    ]
+    const csv = rows
+      .map((row) =>
+        row
+          .map((cell) => {
+            const value = String(cell)
+            return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+          })
+          .join(','),
+      )
+      .join('\n')
+
+    downloadTextFile('product-import-template.csv', `\uFEFF${csv}`, 'text/csv;charset=utf-8;')
+  }
+
+  async function importProductsFromCsv(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const [headerLine, ...bodyLines] = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim() !== '')
+      if (!headerLine) {
+        showAdminMessage('CSVファイルが空です。')
+        return
+      }
+
+      const headers = parseCsvRow(headerLine)
+      const requiredHeaders = ['categoryId', 'maker', 'name', 'subtitle', 'price']
+      const hasRequiredHeaders = requiredHeaders.every((header) => headers.includes(header))
+
+      if (!hasRequiredHeaders) {
+        showAdminMessage('CSVヘッダーが不足しています。テンプレートを使ってください。')
+        return
+      }
+
+      const importedProducts: AdminProduct[] = []
+
+      for (const line of bodyLines) {
+        const values = parseCsvRow(line)
+        const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']))
+        const categoryId = row.categoryId as CategoryId
+
+        if (!categoryOrder.includes(categoryId) || !row.maker || !row.name || !row.subtitle) {
+          continue
+        }
+
+        importedProducts.push({
+          id: `${categoryId}-${Date.now()}-${crypto.randomUUID()}`,
+          categoryId,
+          maker: row.maker,
+          name: row.name,
+          subtitle: row.subtitle,
+          price: parsePriceInput(row.price),
+          imageUrl: row.imageUrl || undefined,
+          badge: row.badge || undefined,
+          isVisible: row.isVisible !== 'false',
+        })
+      }
+
+      if (importedProducts.length === 0) {
+        showAdminMessage('取り込める商品がありませんでした。カテゴリIDや必須列を確認してください。')
+        return
+      }
+
+      setAdminProducts((current) => [...current, ...importedProducts])
+      showAdminMessage(`${importedProducts.length}件の商品をCSVから追加しました。変更を反映で保存できます。`)
+    } catch {
+      showAdminMessage('CSVの読み込みに失敗しました。')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  async function copyEmbedTag() {
+    const iframeTag = `<iframe src="https://renovation-estimate.vercel.app/?embed=1" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`
+    try {
+      await navigator.clipboard.writeText(iframeTag)
+      showAdminMessage('埋め込みタグをコピーしました。')
+    } catch {
+      showAdminMessage('コピーに失敗しました。タグを手動でコピーしてください。')
+    }
   }
 
   function openSupport() {
@@ -2993,6 +3115,13 @@ function App() {
                       <p>見積もり画面に表示する設備商品を登録します。</p>
                     </div>
                   </div>
+                  <div className="csv-tools">
+                    <button className="light-button" onClick={downloadProductCsvTemplate}>CSVテンプレートをダウンロード</button>
+                    <label className="light-button csv-import-button">
+                      CSVを一括インポート
+                      <input type="file" accept=".csv,text/csv" onChange={(event) => void importProductsFromCsv(event)} />
+                    </label>
+                  </div>
                   <div className="controls-grid controls-grid-wide product-form-grid">
                     <label className="field">
                       <span>カテゴリ</span>
@@ -3062,6 +3191,26 @@ function App() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+                <div className="config-card">
+                  <div className="panel-head">
+                    <div>
+                      <h3>サイト設置タグ</h3>
+                      <p>WordPressや既存サイトには、まず iframe 埋め込みで設置するのが最短です。</p>
+                    </div>
+                    <button className="light-button" onClick={() => void copyEmbedTag()}>タグをコピー</button>
+                  </div>
+                  <div className="embed-snippet-card">
+                    <p>推奨URL</p>
+                    <code>https://renovation-estimate.vercel.app/?embed=1</code>
+                    <p>貼り付け用タグ</p>
+                    <textarea
+                      readOnly
+                      rows={5}
+                      value={`<iframe src="https://renovation-estimate.vercel.app/?embed=1" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`}
+                    />
+                    <small>WordPressのカスタムHTMLブロックに貼るだけで設置できます。高さはサイトに合わせて調整してください。</small>
                   </div>
                 </div>
               </div>

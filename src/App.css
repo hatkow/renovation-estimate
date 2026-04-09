@@ -1802,6 +1802,25 @@ body,
   margin-top: 16px;
 }
 
+.csv-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.csv-import-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.csv-import-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .theme-form-grid {
   margin-top: 18px;
 }
@@ -1810,6 +1829,34 @@ body,
   display: grid;
   gap: 12px;
   margin-top: 20px;
+}
+
+.embed-snippet-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 20px;
+  border-radius: 18px;
+  background: var(--white);
+  border: 1px solid rgba(196, 198, 207, 0.35);
+}
+
+.embed-snippet-card p,
+.embed-snippet-card small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.embed-snippet-card code,
+.embed-snippet-card textarea {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  background: var(--surface-low);
+  color: var(--text);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .product-admin-row {
