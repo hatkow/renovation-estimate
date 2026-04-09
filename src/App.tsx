@@ -79,6 +79,7 @@ type EquipmentItem = {
   maker: string
   name: string
   subtitle: string
+  note?: string
   price: number
   imageUrl?: string
   badge?: string
@@ -1022,6 +1023,7 @@ function App() {
     maker: '',
     name: '',
     subtitle: '',
+    note: '',
     price: 0,
     imageUrl: '',
     isVisible: true,
@@ -1746,12 +1748,14 @@ function App() {
       productDraft.id !== ''
         ? {
             ...productDraft,
+            note: productDraft.note || undefined,
             badge: productDraft.badge || undefined,
             imageUrl,
           }
         : {
             ...productDraft,
             id: `${productDraft.categoryId}-${Date.now()}`,
+            note: productDraft.note || undefined,
             badge: productDraft.badge || undefined,
             imageUrl,
           }
@@ -1767,6 +1771,7 @@ function App() {
       maker: '',
       name: '',
       subtitle: '',
+      note: '',
       price: 0,
       imageUrl: '',
       isVisible: true,
@@ -1905,9 +1910,9 @@ function App() {
 
   function downloadProductCsvTemplate() {
     const rows = [
-      ['categoryId', 'maker', 'name', 'subtitle', 'price', 'imageUrl', 'badge', 'isVisible'],
-      ['kitchen', 'LIXIL', 'アレスタ', '間口2550mm / 工事費込み', '770000', 'https://example.com/kitchen.jpg', '人気', 'true'],
-      ['bath', 'TOTO', 'サザナ', 'ほっカラリ床', '200000', '', 'おすすめ', 'true'],
+      ['categoryId', 'maker', 'name', 'subtitle', 'note', 'price', 'imageUrl', 'badge', 'isVisible'],
+      ['kitchen', 'LIXIL', 'アレスタ', '間口2550mm / 工事費込み', '食洗機・浄水器込み / 扉色10色対応', '770000', 'https://example.com/kitchen.jpg', '人気', 'true'],
+      ['bath', 'TOTO', 'サザナ', 'ほっカラリ床', '浴室暖房乾燥機対応 / 断熱パックあり', '200000', '', 'おすすめ', 'true'],
     ]
     const csv = rows
       .map((row) =>
@@ -1961,6 +1966,7 @@ function App() {
           maker: row.maker,
           name: row.name,
           subtitle: row.subtitle,
+          note: row.note || undefined,
           price: parsePriceInput(row.price),
           imageUrl: row.imageUrl || undefined,
           badge: row.badge || undefined,
@@ -2251,6 +2257,7 @@ function App() {
                           </div>
                         ) : null}
                         <p>{product.subtitle}</p>
+                        {product.note ? <div className="product-note">{product.note}</div> : null}
                         <div className="product-card-bottom">
                           <span className="product-price-label">参考価格</span>
                           <div className="product-price-row">
@@ -3416,6 +3423,15 @@ function App() {
                       <input value={productDraft.subtitle} onChange={(event) => setProductDraft((current) => ({ ...current, subtitle: event.target.value }))} />
                     </label>
                     <label className="field field-wide">
+                      <span>備考欄</span>
+                      <textarea
+                        rows={3}
+                        value={productDraft.note ?? ''}
+                        onChange={(event) => setProductDraft((current) => ({ ...current, note: event.target.value }))}
+                        placeholder="例: 食洗機込み / 扉色10色 / 納期約2週間"
+                      />
+                    </label>
+                    <label className="field field-wide">
                       <span>画像URL</span>
                       <input value={productDraft.imageUrl ?? ''} onChange={(event) => setProductDraft((current) => ({ ...current, imageUrl: event.target.value }))} placeholder="https://..." />
                     </label>
@@ -3438,15 +3454,18 @@ function App() {
                   </div>
                   <div className="submit-row config-inline-actions">
                     <button className="nav-button primary" onClick={() => void addProductCard()}>{productDraft.id ? '商品を更新' : '商品を追加'}</button>
-                    {productDraft.id ? <button className="light-button" onClick={() => { setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', price: 0, imageUrl: '', isVisible: true, badge: '' }); setProductImageFile(null) }}>編集をキャンセル</button> : null}
+                    {productDraft.id ? <button className="light-button" onClick={() => { setProductDraft({ id: '', categoryId: 'kitchen', maker: '', name: '', subtitle: '', note: '', price: 0, imageUrl: '', isVisible: true, badge: '' }); setProductImageFile(null) }}>編集をキャンセル</button> : null}
                   </div>
                   <div className="product-admin-list">
                     {adminProducts.map((product) => (
                       <div key={product.id} className="product-admin-row">
                         <div className="product-admin-main">
                           {product.imageUrl ? <img className="product-admin-thumb" src={product.imageUrl} alt={product.name} /> : <div className="product-admin-thumb placeholder">NO IMAGE</div>}
-                          <strong>{resolvedCategories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
-                          <p>{product.subtitle}</p>
+                          <div>
+                            <strong>{resolvedCategories.find((category) => category.id === product.categoryId)?.label} / {product.maker} {product.name}</strong>
+                            <p>{product.subtitle}</p>
+                            {product.note ? <small className="product-admin-note">{product.note}</small> : null}
+                          </div>
                         </div>
                         <div className="product-admin-meta">
                           <span className={`status-pill-inline ${product.isVisible === false ? 'status-amber' : 'status-green'}`}>{product.isVisible === false ? '非公開' : '公開中'}</span>
