@@ -175,6 +175,12 @@ body,
   border: 1px solid var(--outline);
 }
 
+.light-button.danger {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.24);
+  background: #fff7f6;
+}
+
 .sim-main {
   max-width: 1440px;
   margin: 0 auto;
@@ -1823,6 +1829,16 @@ body,
 
 .theme-form-grid {
   margin-top: 18px;
+}
+
+.inline-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inline-action-row input {
+  flex: 1 1 220px;
 }
 
 .product-admin-list {

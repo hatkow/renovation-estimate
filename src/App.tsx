@@ -125,6 +125,13 @@ type ThemeSettings = {
   customCss: string
 }
 
+type ClientProfile = {
+  id: string
+  name: string
+  themeSettings: ThemeSettings
+  reportSettings: ReportSettings
+}
+
 const STORAGE_KEY = 'renovation-estimate-submissions'
 const CONFIG_STORAGE_KEY = 'renovation-estimate-config'
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -167,6 +174,8 @@ type SimulatorConfigPayload = {
   adminProducts: AdminProduct[]
   reportSettings: ReportSettings
   themeSettings: ThemeSettings
+  clientProfiles?: ClientProfile[]
+  defaultClientId?: string
 }
 
 type SupabaseConfigRow = {
@@ -541,6 +550,15 @@ const defaultThemeSettings: ThemeSettings = {
   ...themePresetMap.editorial,
 }
 
+const defaultClientProfiles: ClientProfile[] = [
+  {
+    id: 'default',
+    name: '標準テンプレート',
+    themeSettings: defaultThemeSettings,
+    reportSettings: defaultReportSettings,
+  },
+]
+
 function isFixedCategoryId(id: string): id is CategoryId {
   return categoryOrder.includes(id as CategoryId)
 }
@@ -554,6 +572,65 @@ function normalizeThemeSettings(settings?: Partial<ThemeSettings> & { fontFamily
     ...settings,
     bodyFontFamily,
     headingFontFamily,
+  }
+}
+
+function normalizeReportSettings(settings?: Partial<ReportSettings> | null): ReportSettings {
+  return {
+    ...defaultReportSettings,
+    ...settings,
+  }
+}
+
+function normalizeClientProfiles(
+  profiles?: ClientProfile[] | null,
+  fallbackTheme?: Partial<ThemeSettings> & { fontFamily?: string } | null,
+  fallbackReport?: Partial<ReportSettings> | null,
+) {
+  const normalizedProfiles =
+    profiles
+      ?.map((profile, index) => {
+        const normalizedId = profile.id?.trim() || `client-${index + 1}`
+        return {
+          id: normalizedId,
+          name: profile.name?.trim() || `クライアント ${index + 1}`,
+          themeSettings: normalizeThemeSettings(profile.themeSettings),
+          reportSettings: normalizeReportSettings(profile.reportSettings),
+        } satisfies ClientProfile
+      })
+      .filter((profile, index, list) => list.findIndex((item) => item.id === profile.id) === index) ?? []
+
+  if (normalizedProfiles.length > 0) {
+    return normalizedProfiles
+  }
+
+  return [
+    {
+      id: 'default',
+      name: '標準テンプレート',
+      themeSettings: normalizeThemeSettings(fallbackTheme),
+      reportSettings: normalizeReportSettings(fallbackReport),
+    },
+  ]
+}
+
+function normalizeSimulatorConfigPayload(config: SimulatorConfigPayload): SimulatorConfigPayload {
+  const clientProfiles = normalizeClientProfiles(config.clientProfiles, config.themeSettings, config.reportSettings)
+  const defaultClientId =
+    config.defaultClientId && clientProfiles.some((profile) => profile.id === config.defaultClientId)
+      ? config.defaultClientId
+      : clientProfiles[0]?.id ?? 'default'
+
+  const activeProfile = clientProfiles.find((profile) => profile.id === defaultClientId) ?? clientProfiles[0]
+
+  return {
+    pricingRows: config.pricingRows ?? defaultPricingRows,
+    adminCategories: config.adminCategories ?? defaultAdminCategories,
+    adminProducts: config.adminProducts ?? defaultAdminProducts,
+    reportSettings: normalizeReportSettings(activeProfile?.reportSettings ?? config.reportSettings),
+    themeSettings: normalizeThemeSettings(activeProfile?.themeSettings ?? config.themeSettings),
+    clientProfiles,
+    defaultClientId,
   }
 }
 
@@ -648,6 +725,19 @@ function initials(name: string) {
 function parsePriceInput(value: string) {
   const numeric = Number(value.replace(/[^\d.]/g, ''))
   return Number.isFinite(numeric) ? numeric : 0
+}
+
+function slugifyClientId(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function getRequestedClientId() {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get('client')?.trim() ?? ''
 }
 
 function sanitizeFileName(fileName: string) {
@@ -917,6 +1007,9 @@ function App() {
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>(defaultAdminProducts)
   const [reportSettings, setReportSettings] = useState<ReportSettings>(defaultReportSettings)
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(defaultThemeSettings)
+  const [clientProfiles, setClientProfiles] = useState<ClientProfile[]>(defaultClientProfiles)
+  const [activeClientId, setActiveClientId] = useState(defaultClientProfiles[0].id)
+  const [newClientName, setNewClientName] = useState('')
   const [requestPage, setRequestPage] = useState(1)
   const [detailDraft, setDetailDraft] = useState<{ status: Status; notes: string; lostReason: string }>({
     status: 'pending',
@@ -939,6 +1032,18 @@ function App() {
     ...defaultAdminCategories[0],
   })
   const dataSourceBadge = getDataSourceBadge(dataSource)
+  const requestedClientId = useMemo(() => getRequestedClientId(), [])
+  const activeClientProfile = useMemo(
+    () =>
+      clientProfiles.find((profile) => profile.id === activeClientId) ??
+      clientProfiles[0] ??
+      defaultClientProfiles[0],
+    [activeClientId, clientProfiles],
+  )
+  const embedUrl = useMemo(() => {
+    const clientParam = activeClientId ? `&client=${encodeURIComponent(activeClientId)}` : ''
+    return `https://renovation-estimate.vercel.app/?embed=1${clientParam}`
+  }, [activeClientId])
   const themeStyle = useMemo(
     () => ({
       '--primary': themeSettings.primaryColor,
@@ -994,17 +1099,25 @@ function App() {
         if (isSupabaseConfigured) {
           const row = await fetchSimulatorConfigFromSupabase()
           if (!isMounted || !row?.config_value) return
-          setPricingRows(row.config_value.pricingRows ?? defaultPricingRows)
-          setAdminCategories(row.config_value.adminCategories ?? defaultAdminCategories)
-          setAdminProducts(row.config_value.adminProducts ?? defaultAdminProducts)
-          setReportSettings(row.config_value.reportSettings ?? defaultReportSettings)
-          setThemeSettings(normalizeThemeSettings(row.config_value.themeSettings))
+          const normalizedConfig = normalizeSimulatorConfigPayload(row.config_value)
+          const nextActiveClientId =
+            requestedClientId && normalizedConfig.clientProfiles?.some((profile) => profile.id === requestedClientId)
+              ? requestedClientId
+              : normalizedConfig.defaultClientId ?? normalizedConfig.clientProfiles?.[0]?.id ?? 'default'
+          const activeProfile =
+            normalizedConfig.clientProfiles?.find((profile) => profile.id === nextActiveClientId) ??
+            normalizedConfig.clientProfiles?.[0]
+
+          setPricingRows(normalizedConfig.pricingRows)
+          setAdminCategories(normalizedConfig.adminCategories)
+          setAdminProducts(normalizedConfig.adminProducts)
+          setClientProfiles(normalizedConfig.clientProfiles ?? defaultClientProfiles)
+          setActiveClientId(nextActiveClientId)
+          setReportSettings(normalizeReportSettings(activeProfile?.reportSettings))
+          setThemeSettings(normalizeThemeSettings(activeProfile?.themeSettings))
           writeStoredConfig({
-            pricingRows: row.config_value.pricingRows ?? defaultPricingRows,
-            adminCategories: row.config_value.adminCategories ?? defaultAdminCategories,
-            adminProducts: row.config_value.adminProducts ?? defaultAdminProducts,
-            reportSettings: row.config_value.reportSettings ?? defaultReportSettings,
-            themeSettings: normalizeThemeSettings(row.config_value.themeSettings),
+            ...normalizedConfig,
+            defaultClientId: nextActiveClientId,
           })
           return
         }
@@ -1015,11 +1128,22 @@ function App() {
       if (!isMounted) return
       const storedConfig = readStoredConfig()
       if (storedConfig) {
-        setPricingRows(storedConfig.pricingRows ?? defaultPricingRows)
-        setAdminCategories(storedConfig.adminCategories ?? defaultAdminCategories)
-        setAdminProducts(storedConfig.adminProducts ?? defaultAdminProducts)
-        setReportSettings(storedConfig.reportSettings ?? defaultReportSettings)
-        setThemeSettings(normalizeThemeSettings(storedConfig.themeSettings))
+        const normalizedConfig = normalizeSimulatorConfigPayload(storedConfig)
+        const nextActiveClientId =
+          requestedClientId && normalizedConfig.clientProfiles?.some((profile) => profile.id === requestedClientId)
+            ? requestedClientId
+            : normalizedConfig.defaultClientId ?? normalizedConfig.clientProfiles?.[0]?.id ?? 'default'
+        const activeProfile =
+          normalizedConfig.clientProfiles?.find((profile) => profile.id === nextActiveClientId) ??
+          normalizedConfig.clientProfiles?.[0]
+
+        setPricingRows(normalizedConfig.pricingRows)
+        setAdminCategories(normalizedConfig.adminCategories)
+        setAdminProducts(normalizedConfig.adminProducts)
+        setClientProfiles(normalizedConfig.clientProfiles ?? defaultClientProfiles)
+        setActiveClientId(nextActiveClientId)
+        setReportSettings(normalizeReportSettings(activeProfile?.reportSettings))
+        setThemeSettings(normalizeThemeSettings(activeProfile?.themeSettings))
       }
     }
 
@@ -1027,7 +1151,17 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [requestedClientId])
+
+  useEffect(() => {
+    const activeProfile =
+      clientProfiles.find((profile) => profile.id === activeClientId) ??
+      clientProfiles[0] ??
+      defaultClientProfiles[0]
+
+    setThemeSettings(normalizeThemeSettings(activeProfile.themeSettings))
+    setReportSettings(normalizeReportSettings(activeProfile.reportSettings))
+  }, [activeClientId, clientProfiles])
 
   const adminMetrics = useMemo(() => {
     const total = submissions.length
@@ -1409,13 +1543,7 @@ function App() {
   }
 
   function saveConfig() {
-    persistSimulatorConfig({
-      pricingRows,
-      adminCategories,
-      adminProducts,
-      reportSettings,
-      themeSettings,
-    })
+    persistSimulatorConfig(buildSimulatorConfigPayload())
   }
 
   function resetConfig() {
@@ -1425,12 +1553,17 @@ function App() {
       adminProducts: defaultAdminProducts,
       reportSettings: defaultReportSettings,
       themeSettings: defaultThemeSettings,
+      clientProfiles: defaultClientProfiles,
+      defaultClientId: defaultClientProfiles[0].id,
     }
     setPricingRows(defaultPricingRows)
     setAdminCategories(defaultAdminCategories)
     setAdminProducts(defaultAdminProducts)
     setReportSettings(defaultReportSettings)
     setThemeSettings(defaultThemeSettings)
+    setClientProfiles(defaultClientProfiles)
+    setActiveClientId(defaultClientProfiles[0].id)
+    setNewClientName('')
     setCategoryDraft({ ...defaultAdminCategories[0] })
     persistSimulatorConfig(payload, '初期値に戻して保存しました。')
   }
@@ -1488,12 +1621,103 @@ function App() {
   }
 
   function applyThemePreset(preset: ThemePreset) {
-    setThemeSettings((current) => ({
-      ...current,
+    const nextThemeSettings = {
+      ...themeSettings,
       ...themePresetMap[preset],
       preset,
-    }))
+    }
+    updateActiveClientProfile(
+      (profile) => ({
+        ...profile,
+        themeSettings: nextThemeSettings,
+      }),
+      { syncTheme: nextThemeSettings },
+    )
     showAdminMessage('テーマテンプレートを切り替えました。変更を反映で保存できます。')
+  }
+
+  function buildSimulatorConfigPayload(
+    overrides?: Partial<Pick<SimulatorConfigPayload, 'clientProfiles' | 'defaultClientId'>>,
+  ): SimulatorConfigPayload {
+    return {
+      pricingRows,
+      adminCategories,
+      adminProducts,
+      reportSettings,
+      themeSettings,
+      clientProfiles: overrides?.clientProfiles ?? clientProfiles,
+      defaultClientId: overrides?.defaultClientId ?? activeClientId,
+    }
+  }
+
+  function updateActiveClientProfile(
+    updater: (profile: ClientProfile) => ClientProfile,
+    options?: { syncTheme?: ThemeSettings; syncReport?: ReportSettings },
+  ) {
+    setClientProfiles((current) =>
+      current.map((profile) => (profile.id === activeClientId ? updater(profile) : profile)),
+    )
+
+    if (options?.syncTheme) setThemeSettings(options.syncTheme)
+    if (options?.syncReport) setReportSettings(options.syncReport)
+  }
+
+  function selectClientProfile(clientId: string) {
+    if (!clientProfiles.some((profile) => profile.id === clientId)) return
+    setActiveClientId(clientId)
+    showAdminMessage('クライアント設定を切り替えました。')
+  }
+
+  function addClientProfile() {
+    const baseName = newClientName.trim() || `新規クライアント ${clientProfiles.length + 1}`
+    const normalizedId = slugifyClientId(baseName) || `client-${Date.now()}`
+    const nextId =
+      clientProfiles.some((profile) => profile.id === normalizedId) ? `${normalizedId}-${Date.now()}` : normalizedId
+    const nextProfile: ClientProfile = {
+      id: nextId,
+      name: baseName,
+      themeSettings: { ...themeSettings, brandName: baseName },
+      reportSettings: { ...reportSettings, companyName: baseName },
+    }
+    setClientProfiles((current) => [...current, nextProfile])
+    setActiveClientId(nextId)
+    setNewClientName('')
+    showAdminMessage('クライアント設定を追加しました。個別のデザインとレポートを調整できます。')
+  }
+
+  function removeClientProfile(clientId: string) {
+    if (clientProfiles.length <= 1) {
+      showAdminMessage('最低1つのクライアント設定は残してください。')
+      return
+    }
+
+    const nextProfiles = clientProfiles.filter((profile) => profile.id !== clientId)
+    const nextActiveClientId = activeClientId === clientId ? nextProfiles[0]?.id ?? 'default' : activeClientId
+    setClientProfiles(nextProfiles)
+    setActiveClientId(nextActiveClientId)
+    showAdminMessage('クライアント設定を削除しました。')
+  }
+
+  function patchThemeSettings(patch: Partial<ThemeSettings>) {
+    const nextThemeSettings = { ...themeSettings, ...patch }
+    updateActiveClientProfile(
+      (profile) => ({
+        ...profile,
+        themeSettings: nextThemeSettings,
+      }),
+      { syncTheme: nextThemeSettings },
+    )
+  }
+
+  function patchReportSettings(patch: Partial<ReportSettings>) {
+    const nextReportSettings = { ...reportSettings, ...patch }
+    updateActiveClientProfile(
+      (profile) => ({
+        ...profile,
+        reportSettings: nextReportSettings,
+      }),
+      { syncReport: nextReportSettings },
+    )
   }
 
   async function addProductCard() {
@@ -1759,7 +1983,7 @@ function App() {
   }
 
   async function copyEmbedTag() {
-    const iframeTag = `<iframe src="https://renovation-estimate.vercel.app/?embed=1" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`
+    const iframeTag = `<iframe src="${embedUrl}" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`
     try {
       await navigator.clipboard.writeText(iframeTag)
       showAdminMessage('埋め込みタグをコピーしました。')
@@ -2760,7 +2984,7 @@ function App() {
               </div>
               <div className="admin-header-actions">
                 <button className="light-button" onClick={() => setAdminSection('analytics')}>分析ページへ戻る</button>
-                <button className="light-button" onClick={() => persistSimulatorConfig({ pricingRows, adminCategories, adminProducts, reportSettings, themeSettings }, 'レポート設定を保存しました。')}>設定を保存</button>
+                <button className="light-button" onClick={() => persistSimulatorConfig(buildSimulatorConfigPayload(), 'レポート設定を保存しました。')}>設定を保存</button>
                 <button className="light-button" onClick={() => window.print()}>印刷する</button>
                 <button className="nav-button primary" onClick={downloadMarketingReport}>この内容を出力</button>
               </div>
@@ -2776,19 +3000,19 @@ function App() {
                 <div className="controls-grid controls-grid-wide">
                   <label className="field">
                     <span>会社名</span>
-                    <input value={reportSettings.companyName} onChange={(event) => setReportSettings((current) => ({ ...current, companyName: event.target.value }))} />
+                    <input value={reportSettings.companyName} onChange={(event) => patchReportSettings({ companyName: event.target.value })} />
                   </label>
                   <label className="field">
                     <span>担当名</span>
-                    <input value={reportSettings.presenterName} onChange={(event) => setReportSettings((current) => ({ ...current, presenterName: event.target.value }))} />
+                    <input value={reportSettings.presenterName} onChange={(event) => patchReportSettings({ presenterName: event.target.value })} />
                   </label>
                   <label className="field field-wide">
                     <span>ロゴURL</span>
-                    <input value={reportSettings.logoUrl} onChange={(event) => setReportSettings((current) => ({ ...current, logoUrl: event.target.value }))} placeholder="https://..." />
+                    <input value={reportSettings.logoUrl} onChange={(event) => patchReportSettings({ logoUrl: event.target.value })} placeholder="https://..." />
                   </label>
                   <label className="field field-wide">
                     <span>コメント</span>
-                    <textarea rows={3} value={reportSettings.summaryComment} onChange={(event) => setReportSettings((current) => ({ ...current, summaryComment: event.target.value }))} />
+                    <textarea rows={3} value={reportSettings.summaryComment} onChange={(event) => patchReportSettings({ summaryComment: event.target.value })} />
                   </label>
                 </div>
               </div>
@@ -2963,8 +3187,52 @@ function App() {
                 <div className="config-card">
                   <div className="panel-head">
                     <div>
+                      <h3>クライアント設定</h3>
+                      <p>クライアントごとにデザイン、レポート、埋め込みタグを切り替えられます。</p>
+                    </div>
+                  </div>
+                  <div className="controls-grid controls-grid-wide theme-form-grid">
+                    <label className="field">
+                      <span>編集対象</span>
+                      <select value={activeClientId} onChange={(event) => selectClientProfile(event.target.value)}>
+                        {clientProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>{profile.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>クライアント名</span>
+                      <input
+                        value={activeClientProfile.name}
+                        onChange={(event) =>
+                          setClientProfiles((current) =>
+                            current.map((profile) =>
+                              profile.id === activeClientId ? { ...profile, name: event.target.value } : profile,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>クライアントID</span>
+                      <input value={activeClientProfile.id} readOnly />
+                      <small>埋め込みURLの `client` パラメータに使われます。</small>
+                    </label>
+                    <label className="field field-wide">
+                      <span>新規クライアント追加</span>
+                      <div className="inline-action-row">
+                        <input value={newClientName} onChange={(event) => setNewClientName(event.target.value)} placeholder="例: crossworks" />
+                        <button type="button" className="light-button" onClick={addClientProfile}>追加</button>
+                        <button type="button" className="light-button danger" onClick={() => removeClientProfile(activeClientId)}>削除</button>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                <div className="config-card">
+                  <div className="panel-head">
+                    <div>
                       <h3>デザインテーマ</h3>
-                      <p>クライアントごとにテンプレート、配色、フォント、CTA文言を変えられます。</p>
+                      <p>{activeClientProfile.name} 向けにテンプレート、配色、フォント、CTA文言を変えられます。</p>
                     </div>
                   </div>
                   <div className="controls-grid controls-grid-wide theme-form-grid">
@@ -2979,44 +3247,44 @@ function App() {
                     </label>
                     <label className="field">
                       <span>ブランド名</span>
-                      <input value={themeSettings.brandName} onChange={(event) => setThemeSettings((current) => ({ ...current, brandName: event.target.value }))} />
+                      <input value={themeSettings.brandName} onChange={(event) => patchThemeSettings({ brandName: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>メインカラー</span>
-                      <input type="color" value={themeSettings.primaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, primaryColor: event.target.value }))} />
+                      <input type="color" value={themeSettings.primaryColor} onChange={(event) => patchThemeSettings({ primaryColor: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>サブカラー</span>
-                      <input type="color" value={themeSettings.secondaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, secondaryColor: event.target.value }))} />
+                      <input type="color" value={themeSettings.secondaryColor} onChange={(event) => patchThemeSettings({ secondaryColor: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>背景色</span>
-                      <input type="color" value={themeSettings.surfaceColor} onChange={(event) => setThemeSettings((current) => ({ ...current, surfaceColor: event.target.value }))} />
+                      <input type="color" value={themeSettings.surfaceColor} onChange={(event) => patchThemeSettings({ surfaceColor: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>アクセント色</span>
-                      <input type="color" value={themeSettings.tertiaryColor} onChange={(event) => setThemeSettings((current) => ({ ...current, tertiaryColor: event.target.value }))} />
+                      <input type="color" value={themeSettings.tertiaryColor} onChange={(event) => patchThemeSettings({ tertiaryColor: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>角丸スケール</span>
-                      <input type="range" min="0" max="1.3" step="0.05" value={themeSettings.radiusScale} onChange={(event) => setThemeSettings((current) => ({ ...current, radiusScale: Number(event.target.value) }))} />
+                      <input type="range" min="0" max="1.3" step="0.05" value={themeSettings.radiusScale} onChange={(event) => patchThemeSettings({ radiusScale: Number(event.target.value) })} />
                       <small>{themeSettings.radiusScale.toFixed(2)}</small>
                     </label>
                     <label className="field">
                       <span>本文フォント</span>
-                      <input value={themeSettings.bodyFontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, bodyFontFamily: event.target.value }))} />
+                      <input value={themeSettings.bodyFontFamily} onChange={(event) => patchThemeSettings({ bodyFontFamily: event.target.value })} />
                     </label>
                     <label className="field">
                       <span>見出しフォント</span>
-                      <input value={themeSettings.headingFontFamily} onChange={(event) => setThemeSettings((current) => ({ ...current, headingFontFamily: event.target.value }))} />
+                      <input value={themeSettings.headingFontFamily} onChange={(event) => patchThemeSettings({ headingFontFamily: event.target.value })} />
                     </label>
                     <label className="field field-wide">
                       <span>CTA文言</span>
-                      <input value={themeSettings.ctaLabel} onChange={(event) => setThemeSettings((current) => ({ ...current, ctaLabel: event.target.value }))} />
+                      <input value={themeSettings.ctaLabel} onChange={(event) => patchThemeSettings({ ctaLabel: event.target.value })} />
                     </label>
                     <label className="field field-wide">
                       <span>追加CSS</span>
-                      <textarea rows={6} value={themeSettings.customCss} onChange={(event) => setThemeSettings((current) => ({ ...current, customCss: event.target.value }))} placeholder=".theme-shell .product-card { border-width: 2px; }" />
+                      <textarea rows={6} value={themeSettings.customCss} onChange={(event) => patchThemeSettings({ customCss: event.target.value })} placeholder=".theme-shell .product-card { border-width: 2px; }" />
                       <small>`.theme-shell` 配下にだけ効く想定で入力してください。</small>
                     </label>
                   </div>
@@ -3197,20 +3465,20 @@ function App() {
                   <div className="panel-head">
                     <div>
                       <h3>サイト設置タグ</h3>
-                      <p>WordPressや既存サイトには、まず iframe 埋め込みで設置するのが最短です。</p>
+                      <p>{activeClientProfile.name} 用の iframe タグを発行します。WordPressや既存サイトには、まず iframe 埋め込みで設置するのが最短です。</p>
                     </div>
                     <button className="light-button" onClick={() => void copyEmbedTag()}>タグをコピー</button>
                   </div>
                   <div className="embed-snippet-card">
                     <p>推奨URL</p>
-                    <code>https://renovation-estimate.vercel.app/?embed=1</code>
+                    <code>{embedUrl}</code>
                     <p>貼り付け用タグ</p>
                     <textarea
                       readOnly
                       rows={5}
-                      value={`<iframe src="https://renovation-estimate.vercel.app/?embed=1" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`}
+                      value={`<iframe src="${embedUrl}" width="100%" height="1800" style="border:0;" loading="lazy"></iframe>`}
                     />
-                    <small>WordPressのカスタムHTMLブロックに貼るだけで設置できます。高さはサイトに合わせて調整してください。</small>
+                    <small>WordPressのカスタムHTMLブロックに貼るだけで設置できます。クライアントごとのデザイン切替には `client` パラメータを使います。高さはサイトに合わせて調整してください。</small>
                   </div>
                 </div>
               </div>

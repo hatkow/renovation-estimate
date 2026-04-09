@@ -97,11 +97,17 @@ https://renovation-estimate.vercel.app/?embed=1
 
 `?embed=1` を付けると、ヘッダーや管理サイドバーを省いた軽量表示になります。
 
+クライアント別デザインを切り替える場合は `client` を追加します。
+
+```text
+https://renovation-estimate.vercel.app/?embed=1&client=default
+```
+
 貼り付け用の基本タグ:
 
 ```html
 <iframe
-  src="https://renovation-estimate.vercel.app/?embed=1"
+  src="https://renovation-estimate.vercel.app/?embed=1&client=default"
   width="100%"
   height="1800"
   style="border:0;"
